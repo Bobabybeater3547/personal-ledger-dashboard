@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <rect width="512" height="512" rx="104" fill="#f2f0e9"/>
+  <path d="M112 112h288M112 400h288" stroke="#20221f" stroke-width="10"/>
+  <text x="256" y="322" fill="#20221f" font-family="Baskerville, Georgia, serif" font-size="206" font-style="italic" text-anchor="middle">L</text>
+  <circle cx="372" cy="140" r="17" fill="#be5b3f"/>
+</svg>

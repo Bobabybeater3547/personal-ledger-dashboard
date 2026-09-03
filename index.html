@@ -1,0 +1,160 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#f2f0e9" media="(prefers-color-scheme: light)">
+  <meta name="theme-color" content="#171816" media="(prefers-color-scheme: dark)">
+  <meta name="description" content="A private, local-first view of your Personal Ledger.">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <meta name="apple-mobile-web-app-title" content="Ledger">
+  <title>Personal Ledger</title>
+  <script>
+    window.__LEDGER_FRAGMENT__ = location.hash.slice(1);
+    if (location.hash) history.replaceState(null, "", location.pathname + location.search);
+  </script>
+  <link rel="manifest" href="manifest.json">
+  <link rel="icon" href="icons/icon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <noscript>This dashboard needs JavaScript to read your ledger locally.</noscript>
+
+  <main class="page-shell">
+    <header class="masthead">
+      <a class="wordmark" href="./" aria-label="Personal Ledger home">
+        <span>Personal</span>
+        <span class="wordmark-serif">Ledger</span>
+      </a>
+      <div class="issue-mark" aria-hidden="true">
+        <span id="issue-month">—</span>
+        <span id="issue-year">—</span>
+      </div>
+    </header>
+
+    <section id="notice" class="notice" hidden aria-live="polite">
+      <div>
+        <p class="eyebrow">Private view</p>
+        <p id="notice-copy">Open this page from your iPhone Shortcut to load the latest ledger.</p>
+      </div>
+      <span class="privacy-mark" aria-hidden="true">Local only</span>
+    </section>
+
+    <nav class="period-nav" aria-label="Ledger period">
+      <div class="period-track" role="list">
+        <button class="period-button is-active" type="button" data-period="thisMonth" aria-pressed="true">This month</button>
+        <button class="period-button" type="button" data-period="lastMonth" aria-pressed="false">Last month</button>
+        <button class="period-button" type="button" data-period="twoMonthsAgo" aria-pressed="false">2 months ago</button>
+        <button class="period-button" type="button" data-period="thisYear" aria-pressed="false">This year</button>
+        <button class="period-button" type="button" data-period="lastYear" aria-pressed="false">Last year</button>
+        <button class="period-button" type="button" data-period="allTime" aria-pressed="false">All time</button>
+      </div>
+    </nav>
+
+    <section class="overview" aria-labelledby="period-label">
+      <div class="overview-primary">
+        <p class="eyebrow" id="period-label">This month</p>
+        <p class="hero-value" id="expense-total">¥0</p>
+        <p class="hero-caption">Expenses</p>
+      </div>
+
+      <dl class="overview-secondary">
+        <div class="metric-row">
+          <dt>Income</dt>
+          <dd id="income-total">¥0</dd>
+        </div>
+        <div class="metric-row">
+          <dt>Net</dt>
+          <dd id="net-total">¥0</dd>
+        </div>
+        <div class="metric-row metric-row-small">
+          <dt>Transactions</dt>
+          <dd id="transaction-count">0</dd>
+        </div>
+      </dl>
+    </section>
+
+    <div class="editorial-grid">
+      <section class="feature-section spending-section" aria-labelledby="spending-title">
+        <header class="section-heading">
+          <p class="section-number">01</p>
+          <div>
+            <h2 id="spending-title">Spending</h2>
+            <p>By category</p>
+          </div>
+        </header>
+
+        <div class="spending-layout">
+          <div class="donut-wrap">
+            <svg class="donut" id="donut" viewBox="0 0 200 200" role="img" aria-labelledby="donut-title donut-description">
+              <title id="donut-title">Spending by category</title>
+              <desc id="donut-description">No expenses in this period.</desc>
+              <circle class="donut-base" cx="100" cy="100" r="72"></circle>
+              <g id="donut-segments"></g>
+            </svg>
+            <div class="donut-label" aria-hidden="true">
+              <span id="donut-name">Total</span>
+              <strong id="donut-value">¥0</strong>
+              <small id="donut-share">Selected period</small>
+            </div>
+          </div>
+          <div class="category-list" id="category-list"></div>
+        </div>
+      </section>
+
+      <section class="feature-section trend-section" aria-labelledby="trend-title">
+        <header class="section-heading">
+          <p class="section-number">02</p>
+          <div>
+            <h2 id="trend-title">Year</h2>
+            <p>Trailing 12 months</p>
+          </div>
+        </header>
+
+        <div class="trend-legend" aria-hidden="true">
+          <span><i class="legend-swatch expense-swatch"></i>Expenses</span>
+          <span><i class="legend-swatch income-swatch"></i>Income</span>
+        </div>
+        <div class="trend-chart-wrap">
+          <svg id="trend-chart" class="trend-chart" viewBox="0 0 720 300" role="img" aria-labelledby="trend-chart-title trend-chart-description">
+            <title id="trend-chart-title">Income and expense trend</title>
+            <desc id="trend-chart-description">Monthly income and expenses for the trailing 12 months.</desc>
+          </svg>
+          <div id="trend-tooltip" class="chart-tooltip" hidden></div>
+        </div>
+      </section>
+    </div>
+
+    <section class="feature-section accounts-section" aria-labelledby="accounts-title">
+      <header class="section-heading">
+        <p class="section-number">03</p>
+        <div>
+          <h2 id="accounts-title">Accounts</h2>
+          <p id="accounts-caption">Current balances</p>
+        </div>
+      </header>
+      <div class="account-groups" id="account-groups"></div>
+    </section>
+
+    <section class="feature-section recent-section" aria-labelledby="recent-title">
+      <header class="section-heading">
+        <p class="section-number">04</p>
+        <div>
+          <h2 id="recent-title">Recent</h2>
+          <p>Latest entries</p>
+        </div>
+      </header>
+      <ol class="transaction-list" id="recent-list"></ol>
+    </section>
+
+    <footer class="footer">
+      <p>Personal Ledger</p>
+      <p>Data stays in this browser session.</p>
+    </footer>
+  </main>
+
+  <script src="app.js" defer></script>
+</body>
+</html>
