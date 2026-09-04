@@ -1,758 +1,147 @@
-(() => {
-  "use strict";
-
-  const rawFragment = window.__LEDGER_FRAGMENT__ || "";
-  delete window.__LEDGER_FRAGMENT__;
-
-  const state = {
-    period: "thisMonth",
-    transactions: [],
-    accounts: [],
-    skippedLines: 0,
-    activeCategory: null,
-  };
-
-  const PERIOD_LABELS = {
-    thisMonth: "This month",
-    lastMonth: "Last month",
-    twoMonthsAgo: "2 months ago",
-    thisYear: "This year",
-    lastYear: "Last year",
-    allTime: "All time",
-  };
-
-  const SVG_NS = "http://www.w3.org/2000/svg";
-  const els = {};
-
-  function $(id) {
-    return document.getElementById(id);
-  }
-
-  function finiteNumber(value, fallback = 0) {
-    const number = Number(value);
-    return Number.isFinite(number) ? number : fallback;
-  }
-
-  function normalizedType(value) {
-    return String(value || "").trim().toLowerCase();
-  }
-
-  function isType(transaction, type) {
-    return normalizedType(transaction.type) === type;
-  }
-
-  function decodeBase64Utf8(value) {
-    let normalized = String(value || "").trim().replace(/ /g, "+").replace(/-/g, "+").replace(/_/g, "/");
-    while (normalized.length % 4) normalized += "=";
-    const binary = atob(normalized);
-    const bytes = Uint8Array.from(binary, (character) => character.charCodeAt(0));
-    return new TextDecoder("utf-8", { fatal: true }).decode(bytes);
-  }
-
-  function decodeFragmentValue(value) {
-    if (!value) return "";
-    try {
-      return decodeBase64Utf8(value);
-    } catch (_) {
-      try {
-        return decodeURIComponent(value);
-      } catch (_) {
-        return value;
-      }
-    }
-  }
-
-  function readFragment(fragment) {
-    if (!fragment) return { ledgerText: "", accountsText: "" };
-
-    const params = new URLSearchParams(fragment);
-    if (params.has("ledger") || params.has("accounts")) {
-      return {
-        ledgerText: decodeFragmentValue(params.get("ledger")),
-        accountsText: decodeFragmentValue(params.get("accounts")),
-      };
-    }
-
-    try {
-      const payload = JSON.parse(decodeFragmentValue(fragment));
-      return {
-        ledgerText: typeof payload.ledger === "string" ? payload.ledger : "",
-        accountsText: typeof payload.accounts === "string" ? payload.accounts : JSON.stringify(payload.accounts || {}),
-      };
-    } catch (_) {
-      return { ledgerText: "", accountsText: "" };
-    }
-  }
-
-  function parseLedger(text) {
-    let skipped = 0;
-    const transactions = String(text || "")
-      .replace(/^\uFEFF/, "")
-      .split(/\r?\n/)
-      .map((line) => line.trim())
-      .filter(Boolean)
-      .map((line) => {
-        try {
-          const transaction = JSON.parse(line);
-          const date = new Date(transaction.date);
-          if (!transaction || typeof transaction !== "object" || Number.isNaN(date.getTime())) {
-            skipped += 1;
-            return null;
-          }
-          return {
-            ...transaction,
-            amount: finiteNumber(transaction.amount),
-            fxRate: finiteNumber(transaction.fxRate),
-            jpyAmount: finiteNumber(transaction.jpyAmount, NaN),
-            dateObject: date,
-          };
-        } catch (_) {
-          skipped += 1;
-          return null;
-        }
-      })
-      .filter(Boolean)
-      .sort((a, b) => b.dateObject - a.dateObject);
-
-    return { transactions, skipped };
-  }
-
-  function parseAccounts(text) {
-    if (!text) return [];
-    try {
-      const parsed = JSON.parse(String(text).replace(/^\uFEFF/, ""));
-      const accounts = Array.isArray(parsed) ? parsed : parsed.accounts;
-      if (!Array.isArray(accounts)) return [];
-      return accounts
-        .filter((account) => account && typeof account.name === "string" && account.name.trim())
-        .map((account) => ({
-          name: account.name.trim(),
-          type: String(account.type || "Account").trim(),
-          currency: String(account.currency || "JPY").trim().toUpperCase(),
-          openingBalance: finiteNumber(account.openingBalance),
-        }));
-    } catch (_) {
-      return [];
-    }
-  }
-
-  function startOfMonth(date) {
-    return new Date(date.getFullYear(), date.getMonth(), 1);
-  }
-
-  function addMonths(date, count) {
-    return new Date(date.getFullYear(), date.getMonth() + count, 1);
-  }
-
-  function periodRange(period) {
-    const now = new Date();
-    const monthStart = startOfMonth(now);
-    const year = now.getFullYear();
-
-    switch (period) {
-      case "lastMonth":
-        return { start: addMonths(monthStart, -1), end: monthStart };
-      case "twoMonthsAgo":
-        return { start: addMonths(monthStart, -2), end: addMonths(monthStart, -1) };
-      case "thisYear":
-        return { start: new Date(year, 0, 1), end: new Date(year + 1, 0, 1) };
-      case "lastYear":
-        return { start: new Date(year - 1, 0, 1), end: new Date(year, 0, 1) };
-      case "allTime":
-        return { start: new Date(-8640000000000000), end: new Date(8640000000000000) };
-      default:
-        return { start: monthStart, end: addMonths(monthStart, 1) };
-    }
-  }
-
-  function isInRange(date, range) {
-    const time = date.getTime();
-    return time >= range.start.getTime() && time < range.end.getTime();
-  }
-
-  function jpyAmount(transaction) {
-    if (Number.isFinite(transaction.jpyAmount)) return transaction.jpyAmount;
-    if (String(transaction.currency || "JPY").toUpperCase() === "JPY") return transaction.amount;
-    if (transaction.fxRate > 0) return transaction.amount * transaction.fxRate;
-    return 0;
-  }
-
-  function formatJPY(value) {
-    return new Intl.NumberFormat("ja-JP", {
-      style: "currency",
-      currency: "JPY",
-      currencyDisplay: "narrowSymbol",
-      maximumFractionDigits: 0,
-    }).format(finiteNumber(value));
-  }
-
-  function formatNative(value, currency) {
-    const code = currency || "JPY";
-    return new Intl.NumberFormat(code === "CNY" ? "en-US" : "ja-JP", {
-      style: "currency",
-      currency: code,
-      currencyDisplay: "narrowSymbol",
-      minimumFractionDigits: code === "JPY" ? 0 : 2,
-      maximumFractionDigits: code === "JPY" ? 0 : 2,
-    }).format(finiteNumber(value));
-  }
-
-  function shortJPY(value) {
-    const absolute = Math.abs(value);
-    if (absolute >= 1000000) return `¥${(value / 1000000).toFixed(1)}m`;
-    if (absolute >= 1000) return `¥${Math.round(value / 1000)}k`;
-    return formatJPY(value);
-  }
-
-  function periodSummary() {
-    const range = periodRange(state.period);
-    const transactions = state.transactions.filter((transaction) => isInRange(transaction.dateObject, range));
-    const expenses = transactions.filter((transaction) => isType(transaction, "expense")).reduce((sum, transaction) => sum + jpyAmount(transaction), 0);
-    const income = transactions.filter((transaction) => isType(transaction, "income")).reduce((sum, transaction) => sum + jpyAmount(transaction), 0);
-    const categoryTotals = new Map();
-
-    transactions.forEach((transaction) => {
-      if (!isType(transaction, "expense")) return;
-      const category = String(transaction.category || "Other").trim() || "Other";
-      categoryTotals.set(category, (categoryTotals.get(category) || 0) + jpyAmount(transaction));
-    });
-
-    let categories = [...categoryTotals.entries()]
-      .map(([name, amount]) => ({ name, amount }))
-      .sort((a, b) => b.amount - a.amount);
-
-    if (categories.length > 8) {
-      const visible = categories.slice(0, 7);
-      visible.push({ name: "Other", amount: categories.slice(7).reduce((sum, category) => sum + category.amount, 0) });
-      categories = visible;
-    }
-
-    return { range, transactions, expenses, income, net: income - expenses, categories };
-  }
-
-  function categoryColors() {
-    const styles = getComputedStyle(document.documentElement);
-    return ["--accent", "--blue", "--olive", "--mauve", "--gold", "--accent-soft", "--faint", "--rule-strong"]
-      .map((property) => styles.getPropertyValue(property).trim());
-  }
-
-  function createSvgElement(tag, attributes = {}) {
-    const element = document.createElementNS(SVG_NS, tag);
-    Object.entries(attributes).forEach(([name, value]) => element.setAttribute(name, value));
-    return element;
-  }
-
-  function renderOverview(summary) {
-    els.periodLabel.textContent = PERIOD_LABELS[state.period];
-    els.expenseTotal.textContent = formatJPY(summary.expenses);
-    els.incomeTotal.textContent = formatJPY(summary.income);
-    els.netTotal.textContent = formatJPY(summary.net);
-    els.transactionCount.textContent = new Intl.NumberFormat().format(summary.transactions.length);
-  }
-
-  function setActiveCategory(name, categories, colors) {
-    state.activeCategory = name;
-    const total = categories.reduce((sum, category) => sum + category.amount, 0);
-    const selected = categories.find((category) => category.name === name);
-
-    els.donutSegments.querySelectorAll(".donut-segment").forEach((segment) => {
-      const active = segment.dataset.category === name;
-      segment.classList.toggle("is-active", Boolean(name && active));
-      segment.classList.toggle("is-muted", Boolean(name && !active));
-    });
-
-    els.categoryList.querySelectorAll(".category-row").forEach((row) => {
-      row.classList.toggle("is-active", row.dataset.category === name);
-    });
-
-    if (selected) {
-      els.donutName.textContent = selected.name;
-      els.donutValue.textContent = formatJPY(selected.amount);
-      els.donutShare.textContent = total > 0 ? `${Math.round((selected.amount / total) * 100)}% of spending` : "0% of spending";
-      els.donutValue.style.color = colors[categories.indexOf(selected) % colors.length];
-    } else {
-      els.donutName.textContent = "Total";
-      els.donutValue.textContent = formatJPY(total);
-      els.donutShare.textContent = "Selected period";
-      els.donutValue.style.color = "";
-    }
-  }
-
-  function renderCategories(summary) {
-    const categories = summary.categories;
-    const colors = categoryColors();
-    const total = categories.reduce((sum, category) => sum + category.amount, 0);
-    const circumference = 2 * Math.PI * 72;
-    let offset = 0;
-
-    state.activeCategory = null;
-    els.donutSegments.replaceChildren();
-    els.categoryList.replaceChildren();
-
-    if (!categories.length || total <= 0) {
-      const empty = document.createElement("p");
-      empty.className = "empty-state";
-      empty.textContent = "No expenses in this period.";
-      els.categoryList.appendChild(empty);
-      els.donutName.textContent = "Total";
-      els.donutValue.textContent = formatJPY(0);
-      els.donutShare.textContent = "Selected period";
-      els.donutDescription.textContent = "No expenses in this period.";
-      return;
-    }
-
-    const description = categories.map((category) => `${category.name}: ${formatJPY(category.amount)}`).join("; ");
-    els.donutDescription.textContent = description;
-
-    categories.forEach((category, index) => {
-      const color = colors[index % colors.length];
-      const segmentLength = (category.amount / total) * circumference;
-      const gap = Math.min(3, segmentLength * 0.12);
-      const segment = createSvgElement("circle", {
-        class: "donut-segment",
-        cx: 100,
-        cy: 100,
-        r: 72,
-        stroke: color,
-        "stroke-dasharray": `${Math.max(0, segmentLength - gap)} ${circumference - Math.max(0, segmentLength - gap)}`,
-        "stroke-dashoffset": -offset,
-        tabindex: 0,
-        role: "button",
-        "aria-label": `${category.name}, ${formatJPY(category.amount)}, ${Math.round((category.amount / total) * 100)} percent`,
-      });
-      segment.dataset.category = category.name;
-      segment.addEventListener("mouseenter", () => setActiveCategory(category.name, categories, colors));
-      segment.addEventListener("mouseleave", () => setActiveCategory(null, categories, colors));
-      segment.addEventListener("focus", () => setActiveCategory(category.name, categories, colors));
-      segment.addEventListener("blur", () => setActiveCategory(null, categories, colors));
-      segment.addEventListener("click", () => setActiveCategory(state.activeCategory === category.name ? null : category.name, categories, colors));
-      els.donutSegments.appendChild(segment);
-      offset += segmentLength;
-
-      const row = document.createElement("button");
-      row.type = "button";
-      row.className = "category-row";
-      row.dataset.category = category.name;
-      row.setAttribute("aria-label", `${category.name}: ${formatJPY(category.amount)}, ${Math.round((category.amount / total) * 100)} percent of spending`);
-
-      const dot = document.createElement("span");
-      dot.className = "category-dot";
-      dot.style.background = color;
-      dot.setAttribute("aria-hidden", "true");
-
-      const name = document.createElement("span");
-      name.className = "category-name";
-      name.textContent = category.name;
-
-      const value = document.createElement("span");
-      value.className = "category-value";
-      const amount = document.createElement("strong");
-      amount.textContent = formatJPY(category.amount);
-      const share = document.createElement("small");
-      share.textContent = `${Math.round((category.amount / total) * 100)}%`;
-      value.append(amount, share);
-      row.append(dot, name, value);
-      row.addEventListener("mouseenter", () => setActiveCategory(category.name, categories, colors));
-      row.addEventListener("mouseleave", () => setActiveCategory(null, categories, colors));
-      row.addEventListener("focus", () => setActiveCategory(category.name, categories, colors));
-      row.addEventListener("blur", () => setActiveCategory(null, categories, colors));
-      row.addEventListener("click", () => setActiveCategory(state.activeCategory === category.name ? null : category.name, categories, colors));
-      els.categoryList.appendChild(row);
-    });
-
-    setActiveCategory(null, categories, colors);
-  }
-
-  function trailingMonths() {
-    const current = startOfMonth(new Date());
-    return Array.from({ length: 12 }, (_, index) => {
-      const start = addMonths(current, index - 11);
-      const end = addMonths(start, 1);
-      let expenses = 0;
-      let income = 0;
-      state.transactions.forEach((transaction) => {
-        if (!isInRange(transaction.dateObject, { start, end })) return;
-        if (isType(transaction, "expense")) expenses += jpyAmount(transaction);
-        if (isType(transaction, "income")) income += jpyAmount(transaction);
-      });
-      return { start, expenses, income };
-    });
-  }
-
-  function smoothPath(points) {
-    if (!points.length) return "";
-    if (points.length === 1) return `M ${points[0][0]} ${points[0][1]}`;
-    return points.reduce((path, point, index) => {
-      if (index === 0) return `M ${point[0]} ${point[1]}`;
-      const previous = points[index - 1];
-      const midpoint = (previous[0] + point[0]) / 2;
-      return `${path} C ${midpoint} ${previous[1]}, ${midpoint} ${point[1]}, ${point[0]} ${point[1]}`;
-    }, "");
-  }
-
-  function showTrendTooltip(event, month, xPosition, chartWidth) {
-    const monthLabel = month.start.toLocaleDateString("en-US", { month: "long", year: "numeric" });
-    els.trendTooltip.replaceChildren();
-    const title = document.createElement("strong");
-    title.textContent = monthLabel;
-    const expense = document.createElement("span");
-    expense.append("Expenses", formatJPY(month.expenses));
-    const income = document.createElement("span");
-    income.append("Income", formatJPY(month.income));
-    els.trendTooltip.append(title, expense, income);
-    els.trendTooltip.hidden = false;
-
-    const bounds = els.trendChart.getBoundingClientRect();
-    const localX = event && Number.isFinite(event.clientX) ? event.clientX - bounds.left : (xPosition / chartWidth) * bounds.width;
-    const tooltipWidth = Math.min(170, bounds.width * 0.55);
-    const left = Math.max(0, Math.min(bounds.width - tooltipWidth, localX - tooltipWidth / 2));
-    els.trendTooltip.style.left = `${left}px`;
-    els.trendTooltip.style.top = "0.5rem";
-  }
-
-  function hideTrendTooltip() {
-    els.trendTooltip.hidden = true;
-  }
-
-  function renderTrend() {
-    const months = trailingMonths();
-    const width = 720;
-    const height = 300;
-    const padding = { top: 30, right: 14, bottom: 46, left: 14 };
-    const innerWidth = width - padding.left - padding.right;
-    const innerHeight = height - padding.top - padding.bottom;
-    const maximum = Math.max(1, ...months.flatMap((month) => [month.expenses, month.income]));
-    const x = (index) => padding.left + (innerWidth * index) / (months.length - 1);
-    const y = (value) => padding.top + innerHeight - (value / maximum) * innerHeight;
-    const styles = getComputedStyle(document.documentElement);
-    const accent = styles.getPropertyValue("--accent").trim();
-    const blue = styles.getPropertyValue("--blue").trim();
-
-    els.trendChart.replaceChildren();
-
-    [0, 0.5, 1].forEach((portion) => {
-      const yPosition = padding.top + innerHeight * portion;
-      els.trendChart.appendChild(createSvgElement("line", {
-        class: "chart-grid-line",
-        x1: padding.left,
-        y1: yPosition,
-        x2: width - padding.right,
-        y2: yPosition,
-      }));
-    });
-
-    const expensePoints = months.map((month, index) => [x(index), y(month.expenses)]);
-    const incomePoints = months.map((month, index) => [x(index), y(month.income)]);
-    els.trendChart.appendChild(createSvgElement("path", { class: "chart-line chart-expense", d: smoothPath(expensePoints) }));
-    els.trendChart.appendChild(createSvgElement("path", { class: "chart-line chart-income", d: smoothPath(incomePoints) }));
-
-    months.forEach((month, index) => {
-      if (index % 2 === 0 || index === months.length - 1) {
-        const label = createSvgElement("text", {
-          class: "chart-label",
-          x: x(index),
-          y: height - 13,
-          "text-anchor": index === 0 ? "start" : index === months.length - 1 ? "end" : "middle",
-        });
-        label.textContent = month.start.toLocaleDateString("en-US", { month: "short" }).toUpperCase();
-        els.trendChart.appendChild(label);
-      }
-
-      els.trendChart.appendChild(createSvgElement("circle", { class: "chart-dot", cx: x(index), cy: y(month.expenses), r: 4, fill: accent }));
-      els.trendChart.appendChild(createSvgElement("circle", { class: "chart-dot", cx: x(index), cy: y(month.income), r: 4, fill: blue }));
-
-      const hitWidth = innerWidth / (months.length - 1);
-      const hit = createSvgElement("rect", {
-        class: "chart-hit-area",
-        x: x(index) - hitWidth / 2,
-        y: padding.top,
-        width: hitWidth,
-        height: innerHeight,
-        tabindex: 0,
-        role: "button",
-        "aria-label": `${month.start.toLocaleDateString("en-US", { month: "long", year: "numeric" })}: expenses ${formatJPY(month.expenses)}, income ${formatJPY(month.income)}`,
-      });
-      hit.addEventListener("pointerenter", (event) => showTrendTooltip(event, month, x(index), width));
-      hit.addEventListener("pointermove", (event) => showTrendTooltip(event, month, x(index), width));
-      hit.addEventListener("pointerleave", hideTrendTooltip);
-      hit.addEventListener("focus", (event) => showTrendTooltip(event, month, x(index), width));
-      hit.addEventListener("blur", hideTrendTooltip);
-      els.trendChart.appendChild(hit);
-    });
-
-    els.trendDescription.textContent = months
-      .map((month) => `${month.start.toLocaleDateString("en-US", { month: "long", year: "numeric" })}: expenses ${formatJPY(month.expenses)}, income ${formatJPY(month.income)}`)
-      .join("; ");
-  }
-
-  function isCreditAccount(account) {
-    return /credit|card|liabil/i.test(account.type);
-  }
-
-  function latestFxRate(currency) {
-    if (currency === "JPY") return 1;
-    const transaction = state.transactions.find((item) => String(item.currency || "").toUpperCase() === currency && item.fxRate > 0);
-    return transaction ? transaction.fxRate : null;
-  }
-
-  function nativeAmount(transaction, account) {
-    const txCurrency = String(transaction.currency || "JPY").toUpperCase();
-    if (txCurrency === account.currency) return transaction.amount;
-    if (account.currency === "JPY") return jpyAmount(transaction);
-    const rate = latestFxRate(account.currency);
-    return rate ? jpyAmount(transaction) / rate : transaction.amount;
-  }
-
-  function moveOut(account, amount) {
-    account.balance += isCreditAccount(account) ? amount : -amount;
-  }
-
-  function moveIn(account, amount) {
-    account.balance += isCreditAccount(account) ? -amount : amount;
-  }
-
-  function accountBalances() {
-    const accounts = state.accounts.map((account) => ({ ...account, balance: account.openingBalance }));
-    const byName = new Map(accounts.map((account) => [account.name, account]));
-
-    [...state.transactions].reverse().forEach((transaction) => {
-      const from = byName.get(String(transaction.account || "").trim());
-      const to = byName.get(String(transaction.toAccount || "").trim());
-      const type = normalizedType(transaction.type);
-
-      if (type === "expense" && from) {
-        moveOut(from, nativeAmount(transaction, from));
-      } else if (type === "income" && from) {
-        moveIn(from, nativeAmount(transaction, from));
-      } else if (type === "transfer") {
-        if (from) moveOut(from, nativeAmount(transaction, from));
-        if (to) moveIn(to, nativeAmount(transaction, to));
-      } else if (["record payment", "payment", "credit card payment"].includes(type)) {
-        if (from && to && isCreditAccount(from) && !isCreditAccount(to)) {
-          moveOut(to, nativeAmount(transaction, to));
-          moveIn(from, nativeAmount(transaction, from));
-        } else {
-          if (from) moveOut(from, nativeAmount(transaction, from));
-          if (to) moveIn(to, nativeAmount(transaction, to));
-        }
-      }
-    });
-
-    return accounts;
-  }
-
-  function renderAccountGroup(title, accounts) {
-    const section = document.createElement("section");
-    const heading = document.createElement("h3");
-    heading.className = "account-group-title";
-    heading.textContent = title;
-    section.appendChild(heading);
-
-    if (!accounts.length) {
-      const empty = document.createElement("p");
-      empty.className = "empty-state";
-      empty.textContent = `No ${title.toLowerCase()} configured.`;
-      section.appendChild(empty);
-      return section;
-    }
-
-    const list = document.createElement("dl");
-    list.className = "account-list";
-    accounts.forEach((account) => {
-      const row = document.createElement("div");
-      row.className = "account-row";
-      const term = document.createElement("dt");
-      const name = document.createElement("span");
-      name.className = "account-name";
-      name.textContent = account.name;
-      const type = document.createElement("span");
-      type.className = "account-type";
-      type.textContent = account.type;
-      term.append(name, type);
-
-      const value = document.createElement("dd");
-      const balance = document.createElement("span");
-      balance.className = "account-balance";
-      balance.textContent = formatNative(account.balance, account.currency);
-      value.appendChild(balance);
-
-      if (account.currency === "CNY") {
-        const conversion = document.createElement("span");
-        conversion.className = "account-conversion";
-        const rate = latestFxRate("CNY");
-        conversion.textContent = rate ? `${formatJPY(account.balance * rate)} · ¥${rate.toFixed(2)}/CN¥` : "JPY rate unavailable";
-        value.appendChild(conversion);
-      }
-
-      row.append(term, value);
-      list.appendChild(row);
-    });
-    section.appendChild(list);
-    return section;
-  }
-
-  function renderAccounts() {
-    const balances = accountBalances();
-    const assets = balances.filter((account) => !isCreditAccount(account));
-    const cards = balances.filter(isCreditAccount);
-    els.accountGroups.replaceChildren(renderAccountGroup("Assets", assets), renderAccountGroup("Credit cards", cards));
-
-    const rate = latestFxRate("CNY");
-    els.accountsCaption.textContent = rate ? `Current balances · CNY at ¥${rate.toFixed(2)}` : "Current balances";
-  }
-
-  function transactionTitle(transaction) {
-    return String(transaction.merchant || transaction.category || transaction.type || "Transaction").trim();
-  }
-
-  function transactionAmountPrefix(transaction) {
-    if (isType(transaction, "income")) return "+";
-    if (isType(transaction, "expense")) return "−";
-    return "";
-  }
-
-  function renderRecent(summary) {
-    els.recentList.replaceChildren();
-    const recent = summary.transactions.slice(0, 10);
-    if (!recent.length) {
-      const empty = document.createElement("li");
-      empty.className = "empty-state";
-      empty.textContent = "No transactions in this period.";
-      els.recentList.appendChild(empty);
-      return;
-    }
-
-    recent.forEach((transaction) => {
-      const row = document.createElement("li");
-      row.className = "transaction-row";
-      row.dataset.kind = normalizedType(transaction.type).replace(/\s+/g, "-");
-
-      const date = document.createElement("time");
-      date.className = "transaction-date";
-      date.dateTime = transaction.dateObject.toISOString();
-      const month = document.createElement("span");
-      month.textContent = transaction.dateObject.toLocaleDateString("en-US", { month: "short" });
-      const day = document.createElement("strong");
-      day.textContent = transaction.dateObject.toLocaleDateString("en-US", { day: "2-digit" });
-      date.append(month, day);
-
-      const detail = document.createElement("div");
-      const title = document.createElement("span");
-      title.className = "transaction-title";
-      title.textContent = transactionTitle(transaction);
-      const meta = document.createElement("span");
-      meta.className = "transaction-meta";
-      const route = transaction.toAccount ? `${transaction.account || "—"} → ${transaction.toAccount}` : transaction.account || "—";
-      meta.textContent = [transaction.type, route, transaction.note].filter(Boolean).join(" · ");
-      detail.append(title, meta);
-
-      const value = document.createElement("div");
-      const amount = document.createElement("span");
-      amount.className = "transaction-amount";
-      amount.textContent = `${transactionAmountPrefix(transaction)}${formatJPY(Math.abs(jpyAmount(transaction)))}`;
-      value.appendChild(amount);
-
-      const currency = String(transaction.currency || "JPY").toUpperCase();
-      if (currency !== "JPY") {
-        const native = document.createElement("span");
-        native.className = "transaction-native";
-        native.textContent = formatNative(transaction.amount, currency);
-        value.appendChild(native);
-      }
-
-      row.append(date, detail, value);
-      els.recentList.appendChild(row);
-    });
-  }
-
-  function renderPeriod() {
-    const summary = periodSummary();
-    renderOverview(summary);
-    renderCategories(summary);
-    renderRecent(summary);
-  }
-
-  function setNotice(message) {
-    els.notice.hidden = false;
-    els.noticeCopy.textContent = message;
-  }
-
-  function bindPeriodControls() {
-    document.querySelectorAll(".period-button").forEach((button) => {
-      button.addEventListener("click", () => {
-        state.period = button.dataset.period;
-        document.querySelectorAll(".period-button").forEach((candidate) => {
-          const active = candidate === button;
-          candidate.classList.toggle("is-active", active);
-          candidate.setAttribute("aria-pressed", String(active));
-        });
-        renderPeriod();
-      });
-    });
-  }
-
-  function cacheElements() {
-    Object.assign(els, {
-      issueMonth: $("issue-month"),
-      issueYear: $("issue-year"),
-      notice: $("notice"),
-      noticeCopy: $("notice-copy"),
-      periodLabel: $("period-label"),
-      expenseTotal: $("expense-total"),
-      incomeTotal: $("income-total"),
-      netTotal: $("net-total"),
-      transactionCount: $("transaction-count"),
-      donutSegments: $("donut-segments"),
-      donutDescription: $("donut-description"),
-      donutName: $("donut-name"),
-      donutValue: $("donut-value"),
-      donutShare: $("donut-share"),
-      categoryList: $("category-list"),
-      trendChart: $("trend-chart"),
-      trendDescription: $("trend-chart-description"),
-      trendTooltip: $("trend-tooltip"),
-      accountGroups: $("account-groups"),
-      accountsCaption: $("accounts-caption"),
-      recentList: $("recent-list"),
-    });
-  }
-
-  function init() {
-    cacheElements();
-    const now = new Date();
-    els.issueMonth.textContent = now.toLocaleDateString("en-US", { month: "short" });
-    els.issueYear.textContent = now.getFullYear();
-
-    const payload = readFragment(rawFragment);
-    const parsedLedger = parseLedger(payload.ledgerText);
-    state.transactions = parsedLedger.transactions;
-    state.skippedLines = parsedLedger.skipped;
-    state.accounts = parseAccounts(payload.accountsText);
-
-    if (!rawFragment) {
-      setNotice("Open this page from your iPhone Shortcut to load the latest ledger.");
-    } else if (!payload.ledgerText && !payload.accountsText) {
-      setNotice("The private data fragment could not be read. Rebuild the Shortcut using the included guide.");
-    } else if (state.skippedLines > 0) {
-      setNotice(`Loaded locally. ${state.skippedLines} malformed ledger ${state.skippedLines === 1 ? "line was" : "lines were"} skipped.`);
-    }
-
-    bindPeriodControls();
-    renderPeriod();
-    renderTrend();
-    renderAccounts();
-
-    const themeQuery = window.matchMedia("(prefers-color-scheme: dark)");
-    const redrawForTheme = () => {
-      renderCategories(periodSummary());
-      renderTrend();
-    };
-    if (themeQuery.addEventListener) themeQuery.addEventListener("change", redrawForTheme);
-
-    if ("serviceWorker" in navigator && location.protocol.startsWith("http")) {
-      window.addEventListener("load", () => navigator.serviceWorker.register("sw.js").catch(() => {}), { once: true });
-    }
-  }
-
-  init();
-})();
+import * as C from './core.js';
+import * as DB from './store.js';
+const $=id=>document.getElementById(id), esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const money=(n,currency='JPY')=>n==null?'—':new Intl.NumberFormat('en-US',{style:'currency',currency,currencyDisplay:'narrowSymbol',maximumFractionDigits:currency==='JPY'?0:2}).format(n);
+const monthNames=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+const today=()=>{const d=new Date();return`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;};
+const state={view:'overview',mode:'month',period:today().slice(0,7),events:[],pending:[],meta:{},model:C.materialize([]),page:1,filter:{search:'',type:'',account:'',category:'',sort:'newest',scope:'all',deleted:false},sample:false};
+const sections=[['overview','Overview','The month, in perspective.'],['transactions','Transactions','Every detail, in order.'],['accounts','Accounts','A position, not a guess.'],['analysis','Analysis','Patterns over time.'],['merchants','Merchants','Where the money goes.'],['planning','Tax & investments','Room for the bigger picture.'],['data','Data & privacy','Your records stay yours.']];
+function notice(message,error=false){$('notice').innerHTML=message?`<div class="notice ${error?'error':''}">${esc(message)}</div>`:'';}
+function currentRows(){const [start,end]=C.periodBounds(state.mode,state.period);return state.model.active.filter(t=>C.inRange(t,start,end));}
+function openDialog(html){$('dialog-content').innerHTML=html;$('dialog').showModal();}
+function closeDialog(){$('dialog').close();}
+function dialogHead(title){return`<div class="dialog-top"><h2>${esc(title)}</h2><button data-close aria-label="Close dialog">×</button></div>`;}
+function sectionHead(title,sub=''){return`<div class="panel-head"><h2>${title}</h2><small>${sub}</small></div>`;}
+function ranks(items,key){const max=items[0]?.amount||1;return items.length?`<div class="ranks">${items.slice(0,12).map(r=>`<button class="rank" data-drill="${key}" data-value="${esc(r.name)}"><strong>${esc(r.name)}</strong><span>${money(r.amount)}</span><span class="track"><span class="fill" style="width:${Math.max(1,r.amount/max*100)}%"></span></span></button>`).join('')}</div>`:'<p>No expenses in this period.</p>';}
+function records(rows){return`<div class="rows">${rows.map(t=>`<button class="record" data-edit="${esc(t.id)}"><span><strong>${esc(t.merchant||t.category||t.type)}</strong><small>${esc(C.day(t.date))} · ${esc(t.account)}${t.toAccount?' → '+esc(t.toAccount):''}</small></span><span class="amount ${t.type==='Income'?'positive':''}">${t.type==='Income'?'+':t.type==='Expense'?'−':''}${money(t.jpyAmount)}<small>${esc(t.category)}</small></span></button>`).join('')||'<p>No transactions in this period.</p>'}</div>`;}
+function cashChart(rows,year){const data=C.months(rows,year),max=Math.max(1,...data.flatMap(m=>[m.expense,m.income]));return`<svg class="chart" viewBox="0 0 600 235" role="img" aria-label="Monthly income and expense chart for ${year}">${[0,.5,1].map(v=>`<line class="gridline" x1="42" y1="${190-v*155}" x2="596" y2="${190-v*155}"/><text x="0" y="${194-v*155}">${v?Math.round(max*v/1000)+'k':'0'}</text>`).join('')}${data.map((m,i)=>`<g data-month="${m.key}" tabindex="0" role="button" aria-label="${m.key}: expense ${money(m.expense)}, income ${money(m.income)}"><title>${m.key} · Expense ${money(m.expense)} · Income ${money(m.income)}</title><rect fill="transparent" x="${46+i*46}" y="15" width="42" height="205"/><rect class="expense" x="${50+i*46}" y="${190-m.expense/max*155}" width="12" height="${m.expense/max*155}"/><rect class="income" x="${64+i*46}" y="${190-m.income/max*155}" width="12" height="${m.income/max*155}"/><text x="${63+i*46}" y="216" text-anchor="middle">${monthNames[i]}</text></g>`).join('')}</svg><div class="legend"><span>Expenses</span><span>Income</span></div><p class="chart-caption">Tap a month to explore its transactions. Amounts in JPY.</p>`;}
+function overview(){
+ if(!state.events.length)return empty();
+ const rows=currentRows(),s=C.summary(rows),year=Number(state.period.slice(0,4)),categories=C.ranked(rows.filter(t=>t.type==='Expense'),'category');
+ const prevDate=new Date(Date.UTC(year,Number(state.period.slice(5,7))-2,1)),prevKey=state.mode==='year'?String(year-1):`${prevDate.getUTCFullYear()}-${String(prevDate.getUTCMonth()+1).padStart(2,'0')}`;
+ const [ps,pe]=C.periodBounds(state.mode,prevKey),prev=C.summary(state.model.active.filter(t=>C.inRange(t,ps,pe))),change=prev.expense?((s.expense-prev.expense)/prev.expense*100):null;
+ return`<div class="hero-metrics"><div><span class="eyebrow">${state.mode==='all'?'ALL RECORDED TIME':'SELECTED '+state.mode.toUpperCase()} / EXPENSES</span><div class="hero-value"><small>¥</small>${new Intl.NumberFormat('en-US',{maximumFractionDigits:0}).format(s.expense)}</div><div class="hero-caption">${state.mode==='all'?'Across your imported history.':change===null?'No prior-period expenses for comparison.':`${Math.abs(change).toFixed(1)}% ${change>=0?'more':'less'} than the previous ${state.mode}.`}</div></div><div class="submetrics"><div><div class="metric-value">${money(s.income)}</div><div class="metric-label">Income</div></div><div><div class="metric-value ${s.net>=0?'positive':'negative'}">${money(s.net)}</div><div class="metric-label">Net cash flow</div></div><div><div class="metric-value">${s.count.toLocaleString()}</div><div class="metric-label">Transactions</div></div><div><div class="metric-value">${s.income?(s.net/s.income*100).toFixed(1)+'%':'—'}</div><div class="metric-label">Income retained</div></div></div></div><div class="spread"><section class="panel">${sectionHead('01 / The year in flow',String(year))}${cashChart(state.model.active,year)}</section><section class="panel">${sectionHead('02 / Spending composition')}${ranks(categories,'category')}</section></div><div class="spread"><section class="panel">${sectionHead('03 / Recent entries','<button class="text-button" data-view="transactions">Full history ↗</button>')}${records(rows.slice(0,6))}</section><section class="panel">${sectionHead('04 / At a glance')}<div class="mini-stat"><span class="eyebrow">LARGEST EXPENSE CATEGORY</span><div class="metric-value">${esc(categories[0]?.name||'—')}</div><p>${categories[0]?`${(categories[0].amount/(s.expense||1)*100).toFixed(1)}% of recorded expenses`:'No spending recorded'}</p></div><div class="mini-stat"><span class="eyebrow">AVERAGE PURCHASE</span><div class="metric-value">${rows.some(t=>t.type==='Expense')?money(s.expense/rows.filter(t=>t.type==='Expense').length):'—'}</div></div><button class="text-button" data-view="accounts">See assets and account positions ↗</button></section></div>`;
+}
+function empty(){return`<div class="empty"><span class="big-empty">01—</span><h2>A fresh view of your own records.</h2><p>Choose your existing <strong>ledger.txt</strong> and <strong>accounts.json</strong> from iCloud Drive. Or import a v2 export. Files are read on this device; no financial data is uploaded.</p><div class="actions"><button class="primary" data-import>Choose iCloud files</button><button data-sample>Explore fictional example</button></div><p class="saved-note">Use the Home Screen app for daily viewing. A local copy is kept for offline use; iCloud remains the original.</p></div>`;}
+function render(){
+ const entry=sections.find(x=>x[0]===state.view);$('navigation').innerHTML=sections.map(([key,label])=>`<button data-view="${key}" ${key===state.view?'aria-current="page"':''}>${label}</button>`).join('');$('section-kicker').textContent=`0${sections.indexOf(entry)+1} / ${entry[1].toUpperCase()}`;$('section-title').textContent=entry[2];$('period-controls').hidden=['data'].includes(state.view);$('period-mode').value=state.mode;$('period-date').type=state.mode==='year'?'number':'month';$('period-date').value=state.mode==='year'?state.period.slice(0,4):state.period;$('period-date').disabled=state.mode==='all';
+ const renderer={overview,transactions:transactionPage,accounts:accountsPage,analysis:analysisPage,merchants:merchantsPage,planning:planningPage,data:dataPage};$('main').innerHTML=(state.model.problems.length?`<div class="notice error">${state.model.problems.length} records need attention and are excluded from totals. <button class="text-button" data-view="data">Review</button></div>`:'')+renderer[state.view]();
+ $('sync-status').textContent=state.sample?'Fictional example':state.meta.lastImport?'Imported '+new Date(state.meta.lastImport).toLocaleDateString():'No ledger imported';$('footer-state').textContent=state.sample?'Fictional example · never saved':`${state.model.active.length.toLocaleString()} entries · ${state.meta.confirmed?'iCloud revisions':'Local view'}`;
+}
+// Remaining views are composed below.
+function options(values,selected,all){const labels={all:'Full history',period:'Selected period',newest:'Newest first',oldest:'Oldest first',largest:'Largest first',smallest:'Smallest first'};return`${all?`<option value="">${all}</option>`:''}${values.map(v=>`<option value="${esc(v)}" ${v===selected?'selected':''}>${esc(labels[v]||v)}</option>`).join('')}`;}
+function filtered(){const f=state.filter,query=f.search.toLowerCase(),source=f.deleted?state.model.deleted:state.model.active,[start,end]=C.periodBounds(state.mode,state.period);
+ return source.filter(t=>(f.scope==='all'||C.inRange(t,start,end))&&(!f.type||t.type===f.type)&&(!f.account||t.account===f.account||t.toAccount===f.account)&&(!f.category||t.category===f.category)&&(f.merchant===undefined||t.merchant===f.merchant)&&(!f.taxTag||t.taxTag===f.taxTag)&&(!query||[t.merchant,t.note,t.category,t.account,t.toAccount,t.amount,t.jpyAmount,t.date,t.currency,t.taxTag].join(' ').toLowerCase().includes(query))).sort((a,b)=>f.sort==='largest'?b.jpyAmount-a.jpyAmount:f.sort==='smallest'?a.jpyAmount-b.jpyAmount:f.sort==='oldest'?C.day(a.date).localeCompare(C.day(b.date)):C.day(b.date).localeCompare(C.day(a.date)));
+}
+function transactionPage(){
+ const f=state.filter,rows=filtered(),pages=Math.max(1,Math.ceil(rows.length/50));state.page=Math.min(state.page,pages);const shown=rows.slice((state.page-1)*50,state.page*50);
+ return`<div class="toolbar"><label class="search">Search<input id="search" type="search" placeholder="Merchant, note, amount…" value="${esc(f.search)}"></label><label>History<select data-filter="scope">${options(['all','period'],f.scope)}</select></label><label>Type<select data-filter="type">${options(C.TYPES,f.type,'All types')}</select></label><label>Account<select data-filter="account">${options([...new Set(state.model.active.flatMap(t=>[t.account,t.toAccount]).filter(Boolean))].sort(),f.account,'All accounts')}</select></label><label>Category<select data-filter="category">${options([...new Set(state.model.active.map(t=>t.category))].sort(),f.category,'All categories')}</select></label><label>Sort<select data-filter="sort">${options(['newest','oldest','largest','smallest'],f.sort)}</select></label><button data-reset-filters>Reset</button></div><div class="panel-head" style="margin:20px 0"><span>${rows.length.toLocaleString()} matching entries ${f.deleted?'· Deleted':''}</span><div class="actions"><button data-deleted>${f.deleted?'Active entries':'Deleted entries'}</button><button data-export-csv>Export results</button></div></div><div class="table-wrap"><table><thead><tr><th>Date</th><th>Entry</th><th class="desktop-only">Account / category</th><th class="right">JPY value</th></tr></thead><tbody>${shown.map(t=>`<tr><td>${esc(C.day(t.date).slice(5))}<small class="muted" style="display:block">${esc(C.day(t.date).slice(0,4))}</small></td><td><button class="tx-button" data-edit="${esc(t.id)}">${esc(t.merchant||t.category)}<small>${esc(t.type)}${state.pending.some(p=>p.id===t.id)?' · Pending change':''}</small></button></td><td class="desktop-only">${esc(t.account)}${t.toAccount?' → '+esc(t.toAccount):''}<small class="muted" style="display:block">${esc(t.category)}</small></td><td class="right">${money(t.jpyAmount)}${t.currency!=='JPY'?`<small class="muted" style="display:block">${money(t.amount,t.currency)}</small>`:''}</td></tr>`).join('')||'<tr><td colspan="4">No matching entries. Try fewer filters.</td></tr>'}</tbody></table></div><div class="pagination"><span>Page ${state.page} of ${pages} · 50 per page</span><div><button data-page="-1" ${state.page===1?'disabled':''} aria-label="Previous page">←</button><button data-page="1" ${state.page===pages?'disabled':''} aria-label="Next page">→</button></div></div>`;
+}
+function accountsPage(){
+ const [,end]=C.periodBounds(state.mode,state.period),asOf=end<today()?end:today(),b=C.balances(state.model.active,state.model.accounts,asOf);
+ return`<div class="hero-metrics"><div><span class="eyebrow">${b.complete&&b.values.length?'TOTAL RECORDED ASSETS':'PROVISIONAL ASSET SUBTOTAL'} / ${asOf}</span><div class="hero-value">${b.values.length?money(b.total):'—'}</div><p>${b.complete&&b.values.length?'Based on your opening positions and imported history.':'Add dated opening balances and import complete history to establish account positions.'}</p></div><div><span class="eyebrow">ACCOUNTS</span><div class="flow-total">${b.values.length}</div><button data-account-new>Set up an account ↗</button><p>Payment accounts are excluded from asset totals. Balances use all imported entries up to the date shown.</p></div></div>${b.unknown.length?`<div class="notice">Accounts awaiting setup: ${b.unknown.map(esc).join(', ')}</div>`:''}<div class="account-grid">${b.values.map(a=>`<article class="account"><span class="eyebrow">${esc(a.type)} / ${esc(a.currency)}</span><h2>${esc(a.name)}</h2><div class="metric-value">${money(a.amount,a.currency)}</div><p>${a.includeInAssets?'Included in assets':'Excluded from assets'}${a.currency!=='JPY'&&a.jpy!==null?' · '+money(a.jpy):''}</p>${a.rateDate?`<p>Stored rate ${a.rate} · ${a.rateDate}</p>`:''}${a.issues.length?`<p class="negative">${a.issues.map(esc).join(' · ')}</p>`:''}<div class="actions"><button class="text-button" data-drill="account" data-value="${esc(a.name)}">View activity</button><button class="text-button" data-account="${esc(a.name)}">Edit setup</button></div></article>`).join('')}</div>`;
+}
+function cumulativeChart(rows,year){const ms=C.months(rows,year);let n=0;const points=ms.map(m=>({key:m.key,value:n+=m.net})),min=Math.min(0,...points.map(p=>p.value)),max=Math.max(1,...points.map(p=>p.value)),range=max-min||1,y=v=>175-(v-min)/range*145;
+ return`<svg class="chart" viewBox="0 0 600 220" role="img" aria-label="Cumulative net cash flow for ${year}"><line class="gridline" x1="30" y1="${y(0)}" x2="585" y2="${y(0)}"/><path d="${points.map((p,i)=>`${i?'L':'M'} ${35+i*49} ${y(p.value)}`).join(' ')}" fill="none" stroke="var(--accent)" stroke-width="2"/>${points.map((p,i)=>`<g data-month="${p.key}" tabindex="0" role="button" aria-label="${p.key} cumulative net ${money(p.value)}"><title>${p.key} · ${money(p.value)}</title><circle cx="${35+i*49}" cy="${y(p.value)}" r="5" fill="var(--paper)" stroke="var(--accent)" stroke-width="2"/><text x="${35+i*49}" y="205" text-anchor="middle">${monthNames[i]}</text></g>`).join('')}</svg><p class="chart-caption">Year-to-date income minus expenses. This is cash flow, not an asset balance.</p>`;
+}
+function analysisPage(){
+ const year=Number(state.period.slice(0,4)),rows=state.model.active,current=C.months(rows,year),prior=C.months(rows,year-1),categories=C.ranked(rows.filter(t=>t.type==='Expense'&&C.day(t.date).startsWith(String(year))),'category').slice(0,12),max=Math.max(1,...categories.flatMap(c=>C.months(rows,year,c.name).map(m=>m.expense))),recurring=C.recurrence(rows),utilities=rows.filter(t=>t.type==='Expense'&&/utilit|electric|water|internet|gas|phone/i.test(t.category+' '+t.merchant));
+ return`<div class="spread"><section class="panel">${sectionHead('01 / Income & expenses',String(year))}${cashChart(rows,year)}</section><section class="panel">${sectionHead('02 / Cumulative cash flow',String(year))}${cumulativeChart(rows,year)}</section></div><section class="panel">${sectionHead('03 / Category rhythms',String(year))}<div class="heat-scroll"><div class="heatmap"><span></span>${monthNames.map(m=>`<small>${m}</small>`).join('')}${categories.map(c=>`<span>${esc(c.name)}</span>${C.months(rows,year,c.name).map(m=>`<button data-heat-month="${m.key}" data-category="${esc(c.name)}" style="opacity:${.15+.85*m.expense/max}" aria-label="${esc(c.name)} ${m.key}: ${money(m.expense)}" title="${esc(c.name)} · ${m.key} · ${money(m.expense)}"></button>`).join('')}`).join('')}</div></div><p class="chart-caption">Deeper colour means higher spending. Tap a cell for the entries. The 12 largest categories are shown.</p></section><section class="panel">${sectionHead('04 / Month against month',`${year} / ${year-1}`)}<div class="table-wrap"><table><thead><tr><th>Month</th><th class="right">${year} expenses</th><th class="right">${year-1} expenses</th><th class="right">Change</th><th class="right">${year} net</th></tr></thead><tbody>${current.map((m,i)=>`<tr><td><button class="text-button" data-month="${m.key}">${monthNames[i]}</button></td><td class="right">${money(m.expense)}</td><td class="right">${money(prior[i].expense)}</td><td class="right">${prior[i].expense?((m.expense/prior[i].expense-1)*100).toFixed(1)+'%':'—'}</td><td class="right">${money(m.net)}</td></tr>`).join('')}</tbody></table></div><p class="chart-caption">Full calendar months from imported records. Current months may be incomplete; missing records are not proof of zero activity.</p></section><div class="spread"><section class="panel">${sectionHead('05 / Repeated payments','All imported history')}${recurring.length?recurring.slice(0,20).map(r=>`<button class="record" data-drill="merchant" data-value="${esc(r.merchant)}"><span><strong>${esc(r.merchant)}</strong><small>${r.cadence} pattern · ${r.count} entries · ${esc(r.account)}</small></span><span class="amount">${money(r.mean)}<small>Average · latest ${money(r.latest.jpyAmount)}</small></span></button>`).join(''):'<p>No consistent pattern yet. At least three dated payments to the same merchant are needed.</p>'}<p class="chart-caption">Observed intervals suggest a pattern; they do not establish a subscription or future bill.</p></section><section class="panel">${sectionHead('06 / Utilities',String(year))}${cashChart(utilities,year)}<p class="chart-caption">Entries labelled Utilities, electricity, gas, water, internet or phone. Review labels to refine this view.</p></section></div>`;
+}
+function merchantsPage(){const expenses=currentRows().filter(t=>t.type==='Expense'),merchants=C.ranked(expenses,'merchant'),count=merchants.length,all=C.sum(expenses);const selected=state.merchantSearch||'',matching=merchants.filter(m=>m.name.toLowerCase().includes(selected.toLowerCase()));return`<div class="hero-metrics"><div><span class="eyebrow">SPENDING / ${count} MERCHANTS</span><div class="hero-value">${money(all)}</div><p>${merchants[0]?`${esc(merchants[0].name)} accounts for ${(merchants[0].amount/(all||1)*100).toFixed(1)}% of this period’s expenses.`:'No merchant activity in this period.'}</p></div><div>${sectionHead('Leading destinations')}${ranks(merchants.slice(0,5),'merchant')}</div></div><div class="toolbar"><label>Find a merchant<input id="merchant-search" type="search" placeholder="Merchant name" value="${esc(selected)}"></label></div><div class="table-wrap"><table><thead><tr><th>Merchant</th><th class="right">Visits</th><th class="right">Average</th><th class="right">Spent</th></tr></thead><tbody>${matching.slice((state.page-1)*50,state.page*50).map(m=>`<tr><td><button class="text-button" data-drill="merchant" data-value="${esc(m.name)}">${esc(m.name)}</button></td><td class="right">${m.count}</td><td class="right">${money(m.amount/m.count)}</td><td class="right">${money(m.amount)}</td></tr>`).join('')}</tbody></table></div><div class="pagination"><span>${matching.length} merchants · Page ${state.page}</span><div><button data-page="-1" ${state.page===1?'disabled':''}>←</button><button data-page="1" ${state.page*50>=matching.length?'disabled':''}>→</button></div></div>`;}
+function planningPage(){const rows=currentRows(),tagged=rows.filter(t=>t.taxTag),tags=C.ranked(tagged.filter(t=>t.type==='Expense'),'taxTag'),investments=state.model.accounts.filter(a=>/invest|broker/i.test(a.type));return`<div class="spread"><section class="panel">${sectionHead('01 / Tax review')}<p>Tag entries for your own review: business use, donations, medical costs or another label. Tags make records easier to collect; they do not determine deductibility.</p>${ranks(tags,'taxTag')}<div class="mini-stat"><span class="eyebrow">TAGGED EXPENSES</span><div class="metric-value">${money(C.sum(tagged.filter(t=>t.type==='Expense')))}</div><p>${tagged.length} tagged entries in this period.</p><button data-tax-csv>Export tagged records</button></div><p>Open any transaction to add a tax review tag. Exports include original amounts, historical FX values and notes. No tax rules or rates are assumed.</p></section><section class="panel">${sectionHead('02 / Investment records')}${investments.length?investments.map(a=>`<div class="mini-stat"><h3>${esc(a.name)}</h3><p>${esc(a.currency)} · cash account activity</p><button class="text-button" data-drill="account" data-value="${esc(a.name)}">View funding & withdrawals</button></div>`).join(''):'<h3>Start with the account.</h3><p>Add an Investment account to track cash funding and withdrawals. A transfer into it remains a transfer.</p><button data-account-new>Add account</button>'}<div class="mini-stat"><h3>Holdings and valuations</h3><p>The documented extension model supports dated holdings and valuation snapshots. This release does not calculate portfolio performance, capital gains or taxes from cash transfers.</p><p class="saved-note">An investment cash balance is not the market value of a portfolio. Exclude it from assets if it does not represent uninvested cash.</p></div></section></div>`;}
+function dataPage(){return`<div class="spread"><section class="panel">${sectionHead('01 / Sync & storage')}<p>iCloud holds the originals. This app keeps a local, disposable copy so your ledger opens offline. Import new exports when you want a fresh view.</p><div class="review-list"><div class="review-line"><span>Last import</span><span>${state.meta.lastImport?esc(new Date(state.meta.lastImport).toLocaleString()):'None'}</span></div><div class="review-line"><span>Local history</span><span>${state.events.length.toLocaleString()} revisions · ${state.model.active.length.toLocaleString()} active entries</span></div><div class="review-line"><span>Pending</span><span>${state.pending.length} changes awaiting iCloud import</span></div></div><div class="actions"><button class="primary" data-import>Import iCloud export</button><button data-persist>Keep offline copy</button></div><p id="persistence-status" class="saved-note">Storage can be removed by iOS or by clearing website data. Reimport from iCloud to recover.</p>${state.sample?'<button data-leave-sample>Leave example</button>':`<button class="text-button" data-clear>Clear this local view</button>`}<details><summary>Home Screen setup</summary><p>In Safari, open the clean dashboard URL → Share → Add to Home Screen → keep Open as Web App enabled. Then open that icon and import the ledger there. Safari and the Home Screen app have separate local storage.</p><p>Use the Ledger widget or Shortcut icon for logging. Return to the dashboard icon for viewing; a Shortcut’s Open URLs action may open Safari.</p></details><details><summary>Privacy boundary</summary><p>No account sign-in, analytics, hosted database, external fonts, exchange-rate API or uploads. Only generic app files are fetched. Import filenames and contents stay in this app.</p><p>A small edit request can be sent to the Shortcuts app after review. It is not sent to an HTTP server. Choose the file handoff for longer notes.</p><p>The host supplies executable code. Use a dedicated GitHub Pages origin where possible and review releases; the host could change that code. A local cache is a device copy, not iCloud itself.</p></details></section><section class="panel">${sectionHead('02 / Migration & review')}<p>For an existing v1 ledger: import the complete ledger and account file, save the migration package to iCloud, then run Ledger Migrate v2. Import its export before editing.</p><button data-migrate ${!state.events.length||state.sample?'disabled':''}>Save migration package</button><details><summary>Repair a missing or conflicting revision</summary><p>Import a complete export first. If a conflict remains, preserve both files in iCloud and follow the recovery steps in the migration guide. Conflicted records are excluded from statistics until resolved.</p></details>${state.model.problems.map(p=>`<div class="notice error"><strong>${esc(p.id)}</strong><p>${esc(p.reason)}</p></div>`).join('')}${sectionHead('Pending changes')}${state.pending.length?state.pending.map(p=>`<div class="mini-stat"><h3>${p.operation==='delete'?'Delete':p.entity==='accounts'?'Account setup':'Edit'} · ${esc(p.data?.merchant||p.data?.account||p.id)}</h3><p>Waiting for a matching revision from iCloud. The totals still use the last imported record.</p><div class="actions"><button data-send-pending="${p.requestId}">Review handoff</button><button data-dismiss="${p.requestId}">Dismiss request</button></div></div>`).join(''):'<p>No changes awaiting confirmation.</p>'}<details><summary>Project guides</summary><p><a href="docs/SHORTCUTS.md">Shortcut construction</a> · <a href="docs/MIGRATION.md">Migration & recovery</a> · <a href="docs/ARCHITECTURE.md">Architecture & tradeoffs</a></p></details></section></div>`;}
+function parseFile(text,ledgerId){return new Promise((resolve,reject)=>{const worker=new Worker(new URL('./import-worker.js',import.meta.url),{type:'module'});worker.onmessage=({data})=>{worker.terminate();data.error?reject(Error(data.error)):resolve(data.result);};worker.onerror=()=>{worker.terminate();reject(Error('The import worker could not start. Reload the app online once, then try again.'));};worker.postMessage({text,ledgerId});});}
+async function importFiles(files){
+ if(state.sample)throw Error('Leave the fictional example before importing your records.');
+ if([...files].reduce((s,f)=>s+f.size,0)>64*1024*1024)throw Error('Import up to 64 MB at a time. Select fewer export files.');
+ notice('Reading selected files on this device…');$('import-button').disabled=true;
+ try{
+  let events=state.events,meta={...state.meta},added=[],receipts=new Set(meta.receipts||[]);
+  for(const file of files){const result=await parseFile(await file.text(),meta.ledgerId);if(meta.ledgerId&&result.ledgerId!==meta.ledgerId)throw Error('This file belongs to another ledger. Clear the local view before switching ledgers.');if(result.legacy&&meta.confirmed)throw Error('Migration is complete. Import v2 exports now; the old ledger is archived.');meta.ledgerId=result.ledgerId;events=C.mergeEvents(events,result.events,meta.ledgerId);added.push(...result.events);if(!result.legacy)result.events.forEach(e=>receipts.add(e.revision));}
+  const model=C.materialize(events);meta={...meta,receipts:[...receipts],confirmed:events.length>0&&events.every(e=>receipts.has(e.revision)),lastImport:new Date().toISOString()};
+  await DB.commit(added,meta);state.events=events;state.meta=meta;state.model=model;state.page=1;
+  await settlePending();render();notice(`${model.active.length.toLocaleString()} transactions available. ${added.length.toLocaleString()} revisions checked.${model.problems.length?' Some records need attention in Data & privacy.':''}`);
+ }finally{$('import-button').disabled=false;$('file-input').value='';}
+}
+async function settlePending(){
+ const map=new Map(state.events.map(e=>[e.revision,e]));for(const c of [...state.pending]){const e=map.get(c.requestId);if(e&&e.id===c.id&&e.parent===c.parent&&e.entity===c.entity&&e.operation===c.operation&&C.stable(e.data)===C.stable(c.data)){await DB.removePending(c.requestId);state.pending=state.pending.filter(p=>p.requestId!==c.requestId);}}
+}
+async function sample(){
+ if(state.events.length&&!state.sample){notice('Clear the local view before opening the fictional example.',true);return;}
+ const year=new Date().getFullYear(),ledgerId='fictional-example',events=[];
+ for(let y=year-1;y<=year;y++)for(let m=1;m<=12;m++){
+  for(let j=0;j<14;j++){const income=j===0,amount=income?310000:j===1?74000:1200+((m*173+j*997)%7500),id=`example-${y}-${m}-${j}`;events.push({schema:2,kind:'ledger-event',ledgerId,entity:'transaction',id,revision:id,parent:'',operation:'put',savedAt:`${y}-${String(m).padStart(2,'0')}-01T00:00:00Z`,data:{date:`${y}-${String(m).padStart(2,'0')}-${String(j+1).padStart(2,'0')}`,type:income?'Income':'Expense',account:'Everyday',toAccount:'',category:income?'Salary':j===1?'Housing':['Food','Groceries','Transport','Utilities'][j%4],amount,currency:'JPY',fxRate:1,jpyAmount:amount,merchant:income?'Studio payroll':j===1?'Apartment':['Neighbourhood café','Market hall','City rail','Electric company'][j%4],note:'Fictional example'}});}
+ }
+ events.push({schema:2,kind:'ledger-event',ledgerId,entity:'accounts',id:'accounts',revision:'example-accounts',parent:'',operation:'put',savedAt:`${year-1}-01-01T00:00:00Z`,data:C.accountsData({accounts:[{name:'Everyday',currency:'JPY',type:'Bank',openingBalance:320000,openingDate:`${year-1}-01-01`}]})});
+ state.sample=true;state.events=events;state.meta={ledgerId};state.model=C.materialize(events);render();notice('Fictional example. Nothing is saved. Use Data & privacy → Leave example to return.');
+}
+function download(name,value,type='application/json'){const body=typeof value==='string'?value:JSON.stringify(value,null,2),url=URL.createObjectURL(new Blob([body],{type})),a=document.createElement('a');a.href=url;a.download=name;document.body.append(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),30000);}
+function csv(rows){const keys=['date','type','account','toAccount','category','amount','currency','fxRate','jpyAmount','merchant','note','taxTag','id'];const cell=v=>{let s=String(v??'');if(/^[\s]*[=+\-@]/.test(s)&&typeof v!=='number')s="'"+s;return '"'+s.replace(/"/g,'""')+'"';};return'\uFEFF'+keys.join(',')+'\r\n'+rows.map(t=>keys.map(k=>cell(t[k])).join(',')).join('\r\n');}
+function canEdit(head){if(state.sample){notice('The fictional example cannot write to your Shortcuts.',true);return false;}if(!state.meta.ledgerId){notice('Import a ledger first.',true);return false;}if(head&&!(state.meta.receipts||[]).includes(head.revision)){notice('Save the migration package, run Ledger Migrate v2, then import its iCloud export before editing this record.',true);return false;}if(state.pending.some(p=>p.id===head?.id)){notice('This record already has a pending change. Review it in Data & privacy.',true);return false;}return true;}
+function field(name,label,value,type='text',wide=false){return`<label class="${wide?'wide':''}">${label}<input name="${name}" type="${type}" value="${esc(value)}" ${['amount','fxRate','toAmount','openingBalance','valuationRate'].includes(name)?'inputmode="decimal" step="any"':''} ${['amount','fxRate'].includes(name)?'required min="0.00000001"':''}></label>`;}
+function editTransaction(id){
+ const head=state.model.heads.get(id);if(!head||!canEdit(head))return;const row=state.model.active.find(t=>t.id===id)||state.model.deleted.find(t=>t.id===id),data=head.operation==='delete'?row:head.data;
+ const html=dialogHead(head.operation==='delete'?'Restore transaction':'Edit transaction')+`<form id="edit-form" class="form-grid"><label>Type<select name="type">${options(C.TYPES,data.type)}</select></label>${field('date','Date',C.day(data.date),'date')}${field('account','Account',data.account)}${field('toAccount','To account',data.toAccount)}${field('category','Category',data.category)}${field('merchant','Merchant',data.merchant)}${field('amount','Original amount',data.amount,'number')}${field('currency','Currency',data.currency)}${field('fxRate','JPY per currency unit',data.fxRate,'number')}${field('toAmount','Received amount (if different currency)',data.toAmount??'','number')}${field('taxTag','Tax review tag',data.taxTag??'','text',true)}<label class="wide">Note<textarea name="note" maxlength="2000">${esc(data.note)}</textarea></label><p class="wide saved-note">The stored JPY value is recalculated only if amount, currency or FX rate changes. Your original entry remains in the revision history.</p><div class="wide actions"><button type="submit" class="primary">Review ${head.operation==='delete'?'restoration':'changes'}</button>${head.operation==='put'?'<button type="button" class="danger" id="delete-entry">Delete entry</button>':''}</div></form>`;
+ openDialog(html);$('edit-form').onsubmit=e=>{e.preventDefault();try{const form=Object.fromEntries(new FormData(e.target)),base=head.operation==='delete'?Object.fromEntries(Object.entries(data).filter(([k])=>!['id','revision','event','deleted'].includes(k))):data,next={...base,...form};if(form.date===C.day(data.date))next.date=data.date;if(Number(form.amount)!==data.amount||Number(form.fxRate)!==data.fxRate||form.currency!==data.currency)next.jpyAmount=Number(form.amount)*Number(form.fxRate);const c=C.command(head,next,'put',state.meta.ledgerId);closeDialog();review(c,base);}catch(error){showFormError(error.message);}};
+ if($('delete-entry'))$('delete-entry').onclick=()=>{closeDialog();review(C.command(head,null,'delete',state.meta.ledgerId),head.data);};
+}
+function showFormError(message){let p=$('form-error');if(!p){p=document.createElement('p');p.id='form-error';p.className='negative';p.setAttribute('role','alert');$('dialog-content').prepend(p);}p.textContent=message;}
+function accountEditor(name){
+ const head=state.model.heads.get('accounts');if(!canEdit(head))return;const a=state.model.accounts.find(x=>x.name===name)||{currency:'JPY',type:'Bank',includeInAssets:true};
+ openDialog(dialogHead(name?'Edit account setup':'Set up an account')+`<form id="account-form" class="form-grid">${field('name','Account name',a.name||'')}${field('currency','Currency',a.currency)}<label>Kind<select name="type">${options(['Bank','Cash','E-money','Investment','Credit Card'],a.type)}</select></label>${field('openingBalance','Opening balance',a.openingBalance??'','number')}${field('openingDate','Opening date (start of day)',a.openingDate||'','date')}${field('valuationRate','Optional JPY valuation rate',a.valuationRate??'','number')}${field('valuationDate','Rate date',a.valuationDate||'','date')}<label>Asset total<select name="includeInAssets"><option value="yes" ${a.includeInAssets?'selected':''}>Include cash balance</option><option value="no" ${!a.includeInAssets?'selected':''}>Exclude</option></select></label><p class="wide">The opening balance is before any transactions on the opening date. Payment accounts are always excluded. Renaming an account does not rename old transactions.</p><button type="submit" class="primary wide">Review setup</button></form>`);
+ $('account-form').onsubmit=e=>{e.preventDefault();try{const f=Object.fromEntries(new FormData(e.target)),next={...a,...f,openingBalance:f.openingBalance===''?null:Number(f.openingBalance),valuationRate:f.valuationRate===''?null:Number(f.valuationRate),includeInAssets:f.includeInAssets==='yes'};if(!next.name.trim())throw Error('An account name is required.');const accounts=state.model.accounts.filter(x=>x.name!==name).concat(next),c=C.command(head,{accounts},'put',state.meta.ledgerId,'accounts');closeDialog();review(c,head?.data);}catch(error){showFormError(error.message);}};
+}
+function review(c,previous){
+ const changes=c.operation==='delete'?Object.entries(previous||{}):Object.entries(c.data||{}).filter(([key,v])=>C.stable(v)!==C.stable(previous?.[key]));
+ if(!changes.length){notice('No changes to save.');return;}
+ openDialog(dialogHead(c.operation==='delete'?'Review deletion':'Review changes')+`<p>${c.operation==='delete'?'The entry will be removed from active totals. Its history will remain in iCloud.':'Send these changes to your iCloud review Shortcut.'}</p><div class="review-list">${changes.map(([k,v])=>`<div class="review-line"><span>${esc(k)}</span><span>${previous?.[k]!==undefined&&c.operation!=='delete'?`<del class="muted">${esc(typeof previous[k]==='object'?JSON.stringify(previous[k]):previous[k])}</del><br>`:''}${esc(typeof v==='object'?JSON.stringify(v):v)}</span></div>`).join('')}</div><p class="saved-note">Totals change only after a matching iCloud revision is imported.</p><div class="dialog-actions"><button data-close>Cancel</button><button id="approve-request" class="${c.operation==='delete'?'danger':'primary'}">Approve handoff</button></div>`);
+ $('approve-request').onclick=async()=>{try{await DB.commit([],{},[c]);state.pending.push(c);closeDialog();render();handoff(c);}catch(error){showFormError(error.message);}};
+}
+function handoff(c){
+ const link='shortcuts://run-shortcut?name=Ledger%20Apply%20Change&input=text&text='+encodeURIComponent(JSON.stringify(c));
+ openDialog(dialogHead('Save through Shortcuts')+`<p>Your approved request is ready. Ledger Apply Change checks the latest iCloud revision and asks you to confirm before saving.</p><div class="actions">${link.length<=6000?`<a class="primary" style="padding:12px 16px;text-decoration:none;border-radius:3px" href="${esc(link)}">Open review Shortcut ↗</a>`:'<p>This request is too long for the URL handoff. Use the file below.</p>'}<button id="download-command">Save request file</button></div><p>For the file route: save to iCloud Drive, then Share the file → Ledger Apply Change. Do not open it as a dashboard import.</p><p class="saved-note">After saving, return to this Home Screen app and import the Shortcut’s export. A successful app switch alone does not confirm a save.</p>`);
+ $('download-command').onclick=()=>download(`change-${c.requestId}.command.json`,c);
+}
+function drill(key,value,month){state.view='transactions';state.filter={search:'',type:'Expense',account:'',category:'',sort:'newest',scope:'period',deleted:false};if(key==='merchant')state.filter.merchant=value==='Unspecified'?'':value;else if(key==='taxTag')state.filter.taxTag=value;else if(key==='account'){state.filter.account=value;state.filter.type='';state.filter.scope='all';}else if(key)state.filter[key]=value;if(month){state.mode='month';state.period=month;}state.page=1;render();}
+document.addEventListener('click',async e=>{try{
+ const target=e.target.closest('button,a,[data-month]');if(!target)return;
+ if(target.hasAttribute('data-edit'))editTransaction(target.dataset.edit);
+ if(target.hasAttribute('data-drill'))drill(target.dataset.drill,target.dataset.value);
+ if(target.hasAttribute('data-month')){state.mode='month';state.period=target.dataset.month;state.view='transactions';state.filter={search:'',type:'',account:'',category:'',sort:'newest',scope:'period',deleted:false};state.page=1;render();}
+ if(target.hasAttribute('data-heat-month'))drill('category',target.dataset.category,target.dataset.heatMonth);
+ if(target.hasAttribute('data-page')){state.page+=Number(target.dataset.page);render();}
+ if(target.hasAttribute('data-reset-filters')){state.filter={search:'',type:'',account:'',category:'',sort:'newest',scope:'all',deleted:false};state.page=1;render();}
+ if(target.hasAttribute('data-deleted')){state.filter.deleted=!state.filter.deleted;state.page=1;render();}
+ if(target.hasAttribute('data-export-csv'))download('ledger-selection.csv',csv(filtered()),'text/csv');
+ if(target.hasAttribute('data-tax-csv'))download('tax-review.csv',csv(currentRows().filter(t=>t.taxTag)),'text/csv');
+ if(target.hasAttribute('data-account-new'))accountEditor();if(target.hasAttribute('data-account'))accountEditor(target.dataset.account);
+ if(target.hasAttribute('data-send-pending'))handoff(state.pending.find(p=>p.requestId===target.dataset.sendPending));
+ if(target.hasAttribute('data-dismiss')){openDialog(dialogHead('Dismiss pending request?')+'<p>This removes the local reminder. It cannot undo a revision already saved to iCloud. Import the latest export to check its status.</p><div class="dialog-actions"><button data-close>Keep request</button><button id="confirm-dismiss">Dismiss</button></div>');$('confirm-dismiss').onclick=async()=>{await DB.removePending(target.dataset.dismiss);state.pending=state.pending.filter(p=>p.requestId!==target.dataset.dismiss);closeDialog();render();};}
+ if(target.hasAttribute('data-migrate')){if(state.model.problems.length)throw Error('Resolve import problems before migrating.');download('ledger-v2.migration.json',{schema:2,kind:'ledger-migration',ledgerId:state.meta.ledgerId,events:state.events.filter(e=>!e.parent)});notice('Save this migration file to iCloud Drive. Run Ledger Migrate v2, then import its export before editing.');}
+ if(target.hasAttribute('data-persist')){const granted=await navigator.storage?.persist?.();$('persistence-status').textContent=granted?'Persistent local storage was granted. Keep your iCloud originals.':'iOS has not granted persistent storage. The app still works; reimport if the local copy is removed.';}
+ if(target.hasAttribute('data-clear')){openDialog(dialogHead('Clear this device’s view?')+`<p>This removes imported records and ${state.pending.length} pending requests from this browser. iCloud files are untouched.</p><div class="dialog-actions"><button data-close>Keep local view</button><button class="danger" id="confirm-clear">Clear local view</button></div>`);$('confirm-clear').onclick=async()=>{await DB.clear();closeDialog();state.events=[];state.pending=[];state.meta={};state.model=C.materialize([]);render();notice('Local view cleared.');};}
+ if(target.hasAttribute('data-leave-sample')){state.sample=false;state.events=[];state.meta={};state.model=C.materialize([]);state.view='overview';render();notice('');}
+ }catch(error){notice(error.message,true);}});
+document.addEventListener('keydown',e=>{if(['Enter',' '].includes(e.key)&&e.target.matches('g[data-month]')){e.preventDefault();e.target.dispatchEvent(new MouseEvent('click',{bubbles:true}));}});
+document.addEventListener('change',e=>{if(e.target.dataset.filter){state.filter[e.target.dataset.filter]=e.target.value;state.page=1;render();}});
+let searchTimer;document.addEventListener('input',e=>{if(!['search','merchant-search'].includes(e.target.id))return;const id=e.target.id,value=e.target.value;clearTimeout(searchTimer);searchTimer=setTimeout(()=>{if(id==='search')state.filter.search=value;else state.merchantSearch=value;state.page=1;render();const el=$(id);el?.focus();},180);});
+$('import-button').onclick=()=>$('file-input').click();$('privacy-button').onclick=()=>{state.view='data';render();};
+document.addEventListener('click',e=>{const view=e.target.closest('[data-view]');if(view){state.view=view.dataset.view;state.page=1;render();}if(e.target.closest('[data-import]'))$('file-input').click();if(e.target.closest('[data-close]'))closeDialog();if(e.target.closest('[data-sample]'))sample();});
+$('period-mode').onchange=e=>{state.mode=e.target.value;state.page=1;render();};$('period-date').onchange=e=>{const value=e.target.value;if(!value)return;const year=Number(value.slice(0,4));if(year<1900||year>2200||(state.mode==='year'&&!/^\d{4}$/.test(value))||(state.mode==='month'&&!/^\d{4}-(0[1-9]|1[0-2])$/.test(value))){notice('Choose a period from 1900 to 2200.',true);render();return;}state.period=state.mode==='year'?`${value}-01`:value;state.page=1;render();};
+render();
+$('file-input').onchange=async e=>{try{if(e.target.files.length)await importFiles(e.target.files);}catch(error){notice(error.message,true);}};
+async function init(){try{
+ const loaded=await DB.load();Object.assign(state,loaded);state.model=C.materialize(state.events);await settlePending();render();
+ const fragment=window.__ledgerFragment;delete window.__ledgerFragment;
+ if(fragment){const params=new URLSearchParams(fragment),decode=s=>new TextDecoder('utf-8',{fatal:true}).decode(Uint8Array.from(atob(s.replace(/ /g,'+').replace(/-/g,'+').replace(/_/g,'/')),c=>c.charCodeAt(0)));const files=[];
+ if(params.has('ledger'))files.push(new File([decode(params.get('ledger'))],'ledger.txt'));if(params.has('accounts'))files.push(new File([decode(params.get('accounts'))],'accounts.json'));
+ if(files.length)await importFiles(files);else notice('This older link format was not recognised. Import ledger.txt from iCloud.');
+ }
+ }catch(error){notice(error.message,true);}}
+init();
+if('serviceWorker' in navigator){const initiallyControlled=Boolean(navigator.serviceWorker.controller);let updateRequested=false;navigator.serviceWorker.register('./sw.js',{scope:'./'}).then(reg=>{
+ const offer=()=>{if(!reg.waiting||$('update-app'))return;const button=document.createElement('button');button.id='update-app';button.textContent='Update app';button.onclick=()=>{if($('dialog').open||$('import-button').disabled){notice('Finish importing or close your edit review before updating.');return;}updateRequested=true;reg.waiting.postMessage('activate-update');};$('footer-state').after(button);};offer();reg.addEventListener('updatefound',()=>reg.installing?.addEventListener('statechange',()=>{if(reg.waiting&&navigator.serviceWorker.controller)offer();}));
+ }).catch(()=>notice('Offline app files could not be saved. Open online and reload to try again.'));
+ let refreshing=false;navigator.serviceWorker.addEventListener('controllerchange',()=>{if(!refreshing&&(initiallyControlled||updateRequested)){refreshing=true;location.reload();}});
+}
