@@ -96,7 +96,7 @@
       .split(/\r?\n/)
       .map((line) => line.trim())
       .filter(Boolean)
-      .map((line) => {
+      .map((line, ledgerIndex) => {
         try {
           const transaction = JSON.parse(line);
           const date = new Date(transaction.date);
@@ -110,6 +110,7 @@
             fxRate: finiteNumber(transaction.fxRate),
             jpyAmount: hasNumber(transaction.jpyAmount) ? Number(transaction.jpyAmount) : NaN,
             dateObject: date,
+            ledgerIndex,
           };
         } catch (_) {
           skipped += 1;
@@ -117,7 +118,8 @@
         }
       })
       .filter(Boolean)
-      .sort((a, b) => b.dateObject - a.dateObject);
+      // Later lines were appended later: show those first when dates are equal.
+      .sort((a, b) => b.dateObject - a.dateObject || b.ledgerIndex - a.ledgerIndex);
 
     return { transactions, skipped };
   }

@@ -1,4 +1,4 @@
-const CACHE_NAME = "personal-ledger-shell-v1-update-20260904-1";
+const CACHE_NAME = "personal-ledger-shell-v1-update-20260905-1";
 const SHELL_FILES = ["./", "./index.html", "./styles.css", "./app.js", "./manifest.json", "./icons/icon.svg", "./icons/icon-192.png", "./icons/icon-512.png", "./icons/icon-maskable-512.png", "./icons/apple-touch-icon.png"];
 
 self.addEventListener("install", (event) => {
