@@ -127,7 +127,14 @@ export function balances(rows,accounts,asOf){
  const unknown=new Set();for(const t of eligible){if(!byName.has(t.account))unknown.add(t.account);if(t.toAccount&&!byName.has(t.toAccount))unknown.add(t.toAccount);}
  const values=accounts.map(a=>{
   let amount=a.openingBalance??0;const issues=[];if(a.openingBalance==null)issues.push('Opening balance missing');if(!a.openingDate)issues.push('Opening date missing');if(a.openingDate&&a.openingDate>asOf)issues.push('Opening date is after this period');
-  const card=/credit|card/i.test(a.type);if(card)return {...a,amount:null,jpy:null,issues:['Payment account · excluded from asset totals']};
+  const card=/credit|card/i.test(a.type);
+  if(card){
+   // Activity uses recorded JPY values across currencies; it is not an amount owed.
+   // Older Shortcuts place the card at either end of a Record Payment entry.
+   const purchases=eligible.filter(t=>t.type==='Expense'&&t.account===a.name);
+   const payments=eligible.filter(t=>t.type==='Record Payment'&&(t.account===a.name||t.toAccount===a.name));
+   return {...a,includeInAssets:false,amount:null,jpy:null,issues:[],activity:{purchasesJPY:sum(purchases),purchaseCount:purchases.length,paymentsJPY:sum(payments),paymentCount:payments.length}};
+  }
   for(const t of eligible.filter(t=>(!a.openingDate||day(t.date)>=a.openingDate)&&(t.account===a.name||t.toAccount===a.name))){
    let sign=t.type==='Income'?1:-1,delta;
    if(['Transfer','Record Payment'].includes(t.type)){

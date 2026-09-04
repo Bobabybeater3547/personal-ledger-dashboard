@@ -39,7 +39,22 @@ function transactionPage(){
 }
 function accountsPage(){
  const [,end]=C.periodBounds(state.mode,state.period),asOf=end<today()?end:today(),b=C.balances(state.model.active,state.model.accounts,asOf);
- return`<div class="hero-metrics"><div><span class="eyebrow">${b.complete&&b.values.length?'TOTAL RECORDED ASSETS':'PROVISIONAL ASSET SUBTOTAL'} / ${asOf}</span><div class="hero-value">${b.values.length?money(b.total):'—'}</div><p>${b.complete&&b.values.length?'Based on your opening positions and imported history.':'Add dated opening balances and import complete history to establish account positions.'}</p></div><div><span class="eyebrow">ACCOUNTS</span><div class="flow-total">${b.values.length}</div><button data-account-new>Set up an account ↗</button><p>Payment accounts are excluded from asset totals. Balances use all imported entries up to the date shown.</p></div></div>${b.unknown.length?`<div class="notice">Accounts awaiting setup: ${b.unknown.map(esc).join(', ')}</div>`:''}<div class="account-grid">${b.values.map(a=>`<article class="account"><span class="eyebrow">${esc(a.type)} / ${esc(a.currency)}</span><h2>${esc(a.name)}</h2><div class="metric-value">${money(a.amount,a.currency)}</div><p>${a.includeInAssets?'Included in assets':'Excluded from assets'}${a.currency!=='JPY'&&a.jpy!==null?' · '+money(a.jpy):''}</p>${a.rateDate?`<p>Stored rate ${a.rate} · ${a.rateDate}</p>`:''}${a.issues.length?`<p class="negative">${a.issues.map(esc).join(' · ')}</p>`:''}<div class="actions"><button class="text-button" data-drill="account" data-value="${esc(a.name)}">View activity</button><button class="text-button" data-account="${esc(a.name)}">Edit setup</button></div></article>`).join('')}</div>`;
+ return`<div class="hero-metrics"><div><span class="eyebrow">${b.complete&&b.values.length?'TOTAL RECORDED ASSETS':'PROVISIONAL ASSET SUBTOTAL'} / ${asOf}</span><div class="hero-value">${b.values.length?money(b.total):'—'}</div><p>${b.complete&&b.values.length?'Based on your opening positions and imported history.':'Add dated opening balances and import complete history to establish account positions.'}</p></div><div><span class="eyebrow">ACCOUNTS</span><div class="flow-total">${b.values.length}</div><button data-account-new>Set up an account ↗</button><p>Payment accounts are excluded from asset totals. Balances and card activity use all imported entries up to the date shown.</p></div></div>${b.unknown.length?`<div class="notice">Accounts awaiting setup: ${b.unknown.map(esc).join(', ')}</div>`:''}<div class="account-grid">${b.values.map(a=>accountPanel(a,asOf)).join('')}</div>`;
+}
+function accountPanel(a,asOf){
+ const activity=a.activity;
+ const position=activity?`
+  <p class="metric-label">Purchases recorded · ${activity.purchaseCount.toLocaleString()}</p>
+  <div class="metric-value">${money(activity.purchasesJPY)}</div>
+  <p class="metric-label">Payments recorded · ${activity.paymentCount.toLocaleString()}</p>
+  <div class="metric-value">${money(activity.paymentsJPY)}</div>
+  <p class="saved-note">All imported history through ${asOf}. JPY values as recorded; these are activity totals, not an outstanding balance.</p>
+  <p>Excluded from assets</p>`:`
+  <div class="metric-value">${money(a.amount,a.currency)}</div>
+  <p>${a.includeInAssets?'Included in assets':'Excluded from assets'}${a.currency!=='JPY'&&a.jpy!==null?' · '+money(a.jpy):''}</p>
+  ${a.rateDate?`<p>Stored rate ${a.rate} · ${a.rateDate}</p>`:''}
+  ${a.issues.length?`<p class="negative">${a.issues.map(esc).join(' · ')}</p>`:''}`;
+ return`<article class="account"><span class="eyebrow">${esc(a.type)} / ${esc(a.currency)}</span><h2>${esc(a.name)}</h2>${position}<div class="actions"><button class="text-button" data-drill="account" data-value="${esc(a.name)}">View activity</button><button class="text-button" data-account="${esc(a.name)}">Edit setup</button></div></article>`;
 }
 function cumulativeChart(rows,year){const ms=C.months(rows,year);let n=0;const points=ms.map(m=>({key:m.key,value:n+=m.net})),min=Math.min(0,...points.map(p=>p.value)),max=Math.max(1,...points.map(p=>p.value)),range=max-min||1,y=v=>175-(v-min)/range*145;
  return`<svg class="chart" viewBox="0 0 600 220" role="img" aria-label="Cumulative net cash flow for ${year}"><line class="gridline" x1="30" y1="${y(0)}" x2="585" y2="${y(0)}"/><path d="${points.map((p,i)=>`${i?'L':'M'} ${35+i*49} ${y(p.value)}`).join(' ')}" fill="none" stroke="var(--accent)" stroke-width="2"/>${points.map((p,i)=>`<g data-month="${p.key}" tabindex="0" role="button" aria-label="${p.key} cumulative net ${money(p.value)}"><title>${p.key} · ${money(p.value)}</title><circle cx="${35+i*49}" cy="${y(p.value)}" r="5" fill="var(--paper)" stroke="var(--accent)" stroke-width="2"/><text x="${35+i*49}" y="205" text-anchor="middle">${monthNames[i]}</text></g>`).join('')}</svg><p class="chart-caption">Year-to-date income minus expenses. This is cash flow, not an asset balance.</p>`;
@@ -61,7 +76,7 @@ async function importFiles(files){
   for(const file of files){const result=await parseFile(await file.text(),meta.ledgerId);if(meta.ledgerId&&result.ledgerId!==meta.ledgerId)throw Error('This file belongs to another ledger. Clear the local view before switching ledgers.');if(result.legacy&&meta.confirmed)throw Error('Migration is complete. Import v2 exports now; the old ledger is archived.');meta.ledgerId=result.ledgerId;events=C.mergeEvents(events,result.events,meta.ledgerId);added.push(...result.events);if(!result.legacy)result.events.forEach(e=>receipts.add(e.revision));}
   const model=C.materialize(events);meta={...meta,receipts:[...receipts],confirmed:events.length>0&&events.every(e=>receipts.has(e.revision)),lastImport:new Date().toISOString()};
   await DB.commit(added,meta);state.events=events;state.meta=meta;state.model=model;state.page=1;
-  await settlePending();render();notice(`${model.active.length.toLocaleString()} transactions available. ${added.length.toLocaleString()} revisions checked.${model.problems.length?' Some records need attention in Data & privacy.':''}`);
+  await settlePending();render();notice(`${model.active.length.toLocaleString()} ${model.active.length===1?'transaction':'transactions'} available. ${model.accounts.length.toLocaleString()} ${model.accounts.length===1?'account':'accounts'} loaded.${model.problems.length?' Some records need attention in Data & privacy.':''}`);
  }finally{$('import-button').disabled=false;$('file-input').value='';}
 }
 async function settlePending(){
