@@ -1,32 +1,215 @@
 <!doctype html>
-<html lang="en"><head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<meta name="referrer" content="no-referrer">
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; connect-src 'none'; worker-src 'self'; manifest-src 'self'; base-uri 'none'; form-action 'none'; object-src 'none'">
-<script src="boot.js"></script>
-<meta name="theme-color" content="#f2f0e9">
-<meta name="apple-mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-status-bar-style" content="default">
-<meta name="apple-mobile-web-app-title" content="Ledger">
-<meta name="description" content="Personal Ledger. Private records, a clearer perspective.">
-<title>Personal Ledger</title>
-<link rel="icon" href="icons/icon.svg" type="image/svg+xml">
-<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
-<link rel="manifest" href="manifest.json">
-<link rel="stylesheet" href="styles.css">
-</head><body>
-<a class="skip" href="#main">Skip to content</a>
-<div class="shell">
-<header class="masthead"><a class="wordmark" href="./">Personal <em>Ledger</em><span>PRIVATE ACCOUNTS / VOL. 02</span></a><div class="header-actions"><span id="sync-status" class="status">Local workspace</span><button id="import-button" class="primary">Import from iCloud <span aria-hidden="true">↗</span></button></div></header>
-<nav id="navigation" class="navigation" aria-label="Main navigation"></nav>
-<div id="notice" role="status" aria-live="polite"></div>
-<div class="edition"><div><span id="section-kicker" class="eyebrow">01 / OVERVIEW</span><h1 id="section-title">The month, in perspective.</h1></div><div id="period-controls" class="period-controls"><label>View<select id="period-mode"><option value="month">Month</option><option value="year">Year</option><option value="all">All time</option></select></label><label>Period<input id="period-date" type="month"></label></div></div>
-<main id="main" tabindex="-1"><div class="empty"><h2>Your ledger, on your terms.</h2><p>Import your iCloud ledger to begin. Financial files are read on this device.</p></div></main>
-<footer><span>PERSONAL LEDGER <b>II</b></span><span id="footer-state">iCloud originals · Local view</span><button id="privacy-button" class="text-button">Data & privacy</button></footer>
-</div>
-<input id="file-input" type="file" accept=".txt,.json,.ndjson,application/json,text/plain" multiple hidden>
-<dialog id="dialog"><div id="dialog-content"></div></dialog>
-<noscript><p>JavaScript is needed to read and display your ledger locally.</p></noscript>
-<script type="module" src="app.js"></script>
-</body></html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#f2f0e9" media="(prefers-color-scheme: light)">
+  <meta name="theme-color" content="#171816" media="(prefers-color-scheme: dark)">
+  <meta name="description" content="A private, local-first view of your Personal Ledger.">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <meta name="apple-mobile-web-app-title" content="Ledger">
+  <title>Personal Ledger</title>
+  <script>
+    window.__LEDGER_FRAGMENT__ = location.hash.slice(1);
+    if (location.hash) history.replaceState(null, "", location.pathname + location.search);
+  </script>
+  <link rel="manifest" href="manifest.json">
+  <link rel="icon" href="icons/icon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <noscript>This dashboard needs JavaScript to read your ledger locally.</noscript>
+
+  <main class="page-shell">
+    <header class="masthead">
+      <a class="wordmark" href="./" aria-label="Personal Ledger home">
+        <span>Personal</span>
+        <span class="wordmark-serif">Ledger</span>
+      </a>
+      <div class="issue-mark" aria-hidden="true">
+        <span id="issue-month">—</span>
+        <span id="issue-year">—</span>
+      </div>
+    </header>
+
+    <section id="notice" class="notice" hidden aria-live="polite">
+      <div>
+        <p class="eyebrow">Private view</p>
+        <p id="notice-copy">Open this page from your iPhone Shortcut to load the latest ledger.</p>
+      </div>
+      <span class="privacy-mark" aria-hidden="true">Local only</span>
+    </section>
+
+    <nav class="period-nav" aria-label="Ledger period">
+      <div class="period-track" role="list">
+        <button class="period-button is-active" type="button" data-period="thisMonth" aria-pressed="true">This month</button>
+        <button class="period-button" type="button" data-period="lastMonth" aria-pressed="false">Last month</button>
+        <button class="period-button" type="button" data-period="twoMonthsAgo" aria-pressed="false">2 months ago</button>
+        <button class="period-button" type="button" data-period="thisYear" aria-pressed="false">This year</button>
+        <button class="period-button" type="button" data-period="lastYear" aria-pressed="false">Last year</button>
+        <button class="period-button" type="button" data-period="allTime" aria-pressed="false">All time</button>
+      </div>
+    </nav>
+
+    <section class="overview" aria-labelledby="period-label">
+      <div class="overview-primary">
+        <p class="eyebrow" id="period-label">This month</p>
+        <p class="hero-value" id="expense-total">¥0</p>
+        <p class="hero-caption">Expenses</p>
+      </div>
+
+      <dl class="overview-secondary">
+        <div class="metric-row">
+          <dt>Income</dt>
+          <dd id="income-total">¥0</dd>
+        </div>
+        <div class="metric-row">
+          <dt>Net</dt>
+          <dd id="net-total">¥0</dd>
+        </div>
+        <div class="metric-row metric-row-small">
+          <dt>Transactions</dt>
+          <dd id="transaction-count">0</dd>
+        </div>
+      </dl>
+    </section>
+
+    <div class="editorial-grid">
+      <section class="feature-section spending-section" aria-labelledby="spending-title">
+        <header class="section-heading">
+          <p class="section-number">01</p>
+          <div>
+            <h2 id="spending-title">Spending</h2>
+            <p>By category</p>
+          </div>
+        </header>
+
+        <div class="spending-layout">
+          <div class="donut-wrap">
+            <svg class="donut" id="donut" viewBox="0 0 200 200" role="img" aria-labelledby="donut-title donut-description">
+              <title id="donut-title">Spending by category</title>
+              <desc id="donut-description">No expenses in this period.</desc>
+              <circle class="donut-base" cx="100" cy="100" r="72"></circle>
+              <g id="donut-segments"></g>
+            </svg>
+            <div class="donut-label" aria-hidden="true">
+              <span id="donut-name">Total</span>
+              <strong id="donut-value">¥0</strong>
+              <small id="donut-share">Selected period</small>
+            </div>
+          </div>
+          <div class="category-list" id="category-list"></div>
+        </div>
+      </section>
+
+      <section class="feature-section trend-section" aria-labelledby="trend-title">
+        <header class="section-heading">
+          <p class="section-number">02</p>
+          <div>
+            <h2 id="trend-title">Year</h2>
+            <p>Trailing 12 months</p>
+          </div>
+        </header>
+
+        <div class="trend-legend" aria-hidden="true">
+          <span><i class="legend-swatch expense-swatch"></i>Expenses</span>
+          <span><i class="legend-swatch income-swatch"></i>Income</span>
+        </div>
+        <div class="trend-chart-wrap">
+          <svg id="trend-chart" class="trend-chart" viewBox="0 0 720 300" role="img" aria-labelledby="trend-chart-title trend-chart-description">
+            <title id="trend-chart-title">Income and expense trend</title>
+            <desc id="trend-chart-description">Monthly income and expenses for the trailing 12 months.</desc>
+          </svg>
+          <div id="trend-tooltip" class="chart-tooltip" hidden></div>
+        </div>
+      </section>
+    </div>
+
+    <section class="feature-section rhythms-section" aria-labelledby="rhythms-title">
+      <header class="section-heading">
+        <p class="section-number">03</p>
+        <div>
+          <h2 id="rhythms-title">Category rhythms</h2>
+          <p>Spending across the year</p>
+        </div>
+      </header>
+      <div class="rhythm-toolbar">
+        <label for="rhythm-year">Year <select id="rhythm-year"></select></label>
+        <p class="rhythm-key"><span>Less</span><i aria-hidden="true"></i><span>More · JPY</span></p>
+      </div>
+      <div class="rhythm-scroll" role="region" aria-label="Monthly category spending, scroll horizontally" tabindex="0">
+        <table class="rhythm-table" id="rhythm-table">
+          <caption class="sr-only" id="rhythm-table-caption">Category spending by month, in JPY.</caption>
+          <thead><tr>
+            <th scope="col">Category</th>
+            <th scope="col">Jan</th><th scope="col">Feb</th><th scope="col">Mar</th><th scope="col">Apr</th>
+            <th scope="col">May</th><th scope="col">Jun</th><th scope="col">Jul</th><th scope="col">Aug</th>
+            <th scope="col">Sep</th><th scope="col">Oct</th><th scope="col">Nov</th><th scope="col">Dec</th>
+            <th scope="col">Year total</th>
+          </tr></thead>
+          <tbody id="rhythm-body"></tbody>
+        </table>
+      </div>
+      <p class="empty-state" id="rhythm-empty" hidden>No expenses recorded in this year.</p>
+      <div class="rhythm-detail">
+        <p id="rhythm-selection" aria-live="polite">Tap a month to inspect its spending. Swipe across to see the whole year.</p>
+        <button class="text-button" id="rhythm-view" type="button" hidden>View entries ↓</button>
+      </div>
+    </section>
+
+    <section class="feature-section accounts-section" aria-labelledby="accounts-title">
+      <header class="section-heading">
+        <p class="section-number">04</p>
+        <div>
+          <h2 id="accounts-title">Accounts</h2>
+          <p id="accounts-caption">Current balances</p>
+        </div>
+      </header>
+      <div class="asset-overview">
+        <div>
+          <p class="eyebrow">Provisional asset subtotal</p>
+          <p class="asset-value" id="asset-subtotal">—</p>
+        </div>
+        <p class="asset-scope" id="asset-scope">Based on recorded account balances, valued in JPY.</p>
+      </div>
+      <div class="account-groups" id="account-groups"></div>
+      <details class="balance-details">
+        <summary>About these balances</summary>
+        <ul id="asset-notes"></ul>
+      </details>
+    </section>
+
+    <section class="feature-section recent-section" aria-labelledby="recent-title">
+      <header class="section-heading">
+        <p class="section-number">05</p>
+        <div>
+          <h2 id="recent-title" tabindex="-1">Recent</h2>
+          <p id="recent-caption">Latest entries</p>
+        </div>
+      </header>
+      <button class="text-button clear-filter" id="clear-transaction-filter" type="button" hidden>Back to selected period ×</button>
+      <ol class="transaction-list" id="recent-list"></ol>
+      <p class="recent-count" id="recent-count" role="status" aria-live="polite" aria-atomic="true">0 transactions</p>
+      <nav class="pagination" aria-label="Transaction pages">
+        <button class="text-button" id="page-previous" type="button" disabled>← Previous</button>
+        <form class="page-form" id="page-form">
+          <label for="page-number">Page</label>
+          <input id="page-number" type="number" inputmode="numeric" min="1" max="1" value="1" step="1" required aria-describedby="page-total">
+          <span id="page-total">of 1</span>
+          <button class="text-button page-go" type="submit" aria-label="Go to page">Go</button>
+        </form>
+        <button class="text-button" id="page-next" type="button" disabled>Next →</button>
+      </nav>
+    </section>
+
+    <footer class="footer">
+      <p>Personal Ledger</p>
+      <p>Data stays in this browser session.</p>
+    </footer>
+  </main>
+
+  <script src="app.js" defer></script>
+</body>
+</html>

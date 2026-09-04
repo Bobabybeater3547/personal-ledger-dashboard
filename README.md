@@ -1,67 +1,84 @@
-# Personal Ledger
+# Personal Ledger — v1, with three additions
 
-A static, private-by-design dashboard for a ledger stored in iCloud Drive. GitHub Pages serves only the interface. The iPhone Shortcut passes `ledger.txt` and `accounts.json` in the URL fragment, which browsers do not send to the server. The dashboard copies the fragment into memory and removes it from the address bar before parsing it.
+The original v1 dashboard, with its off-white paper, charcoal type, serif headings, thin rules, donut chart and yearly line chart.
 
-The app does not upload data, use analytics, make API calls, or write financial data to `localStorage`, `sessionStorage`, IndexedDB, or the Cache API. Its service worker caches only the public app shell.
+- **All loaded transactions, ten per page.** Previous, Next, and a page number jump. Select **All time** to browse across every loaded year. Entries show their year as well as month and day.
+- **Provisional asset subtotal.** A JPY subtotal above the original account list. Credit cards still show their recorded balances and are excluded from the asset subtotal.
+- **Category rhythms.** Choose a year and explore spending across its twelve months. All expense categories are included. Tap a cell for the amount and entry count, then **View entries** to reach those transactions. **Back to selected period** clears this selection.
 
-## Files
+This update uses the original iPhone Shortcuts and current iCloud files. No migration or additional Shortcut helpers are required.
 
-- `index.html`, `styles.css`, `app.js`: the dashboard
-- `manifest.json`, `sw.js`, `icons/`: PWA support
-- `SHORTCUT.md`: exact iPhone Shortcut construction
-- `.github/workflows/pages.yml`: automatic GitHub Pages deployment
+## Install in the existing GitHub repository
 
-## Deploy to GitHub Pages
+These are replacement files for the existing repository, which already contains the icons and GitHub Pages workflow. This ZIP is not a standalone site.
 
-1. Create a new **public** GitHub repository, for example `personal-ledger-dashboard`.
-2. Upload every file and folder from this project to the repository root. Do **not** upload `ledger.txt` or `accounts.json`.
-3. In the repository, open **Settings → Pages**.
-4. Under **Build and deployment → Source**, choose **GitHub Actions**.
-5. Push to the `main` branch or run the **Deploy GitHub Pages** workflow manually.
-6. After deployment, GitHub shows the URL, normally `https://YOUR-USERNAME.github.io/personal-ledger-dashboard/`.
-7. Put that URL into the Shortcut described in `SHORTCUT.md`.
+1. On Windows, download **personal-ledger-v1-update.zip**.
+2. Right-click the ZIP and choose **Extract All**, then **Extract**.
+3. Open the extracted folder. You should see six files: **app.js**, **index.html**, **styles.css**, **sw.js**, **manifest.json**, and **README.md**.
+4. Open [the repository's main Code page](https://github.com/Bobabybeater3547/personal-ledger-dashboard). Stay in the top folder, where the existing index.html appears.
+5. Choose **Add file → Upload files**.
+6. Drag those **six files** into the upload box. Upload the files themselves, not the enclosing folder or the ZIP.
+7. Enter **Restore v1 with pagination, assets and category rhythms** as the commit message. Commit directly to **main** using **Commit changes**.
+8. Open **Actions** and select the newest **Deploy GitHub Pages** run. Wait until that run succeeds with a green check. The existing workflow deploys automatically; no separate build step is needed.
 
-No build step or package installation is required.
+Only generic dashboard files belong in GitHub. Keep ledger.txt, accounts.json, backups, and migration exports in iCloud.
 
-## Accepted private fragment
+## Open the update on iPhone
 
-The recommended format is:
+1. With an internet connection, open [the dashboard](https://bobabybeater3547.github.io/personal-ledger-dashboard/) in Safari. This gives the old installed app a chance to receive the replacement.
+2. If v2 remains visible, let the page finish loading, then reload it. The replacement activates automatically; there is no need to look for an Update App button.
+3. Once the original Personal Ledger design appears, run your original **Open Personal Ledger** Shortcut, or the original dashboard option in your **Ledger** launcher.
+4. The Shortcut loads the current ledger.txt and accounts.json. Select **All time**, scroll to **Recent**, and use **Next** to see entries after the first ten.
+5. The restored dashboard also has **Category rhythms** and a **Provisional asset subtotal** in **Accounts**.
 
-```text
-#v=1&ledger=BASE64_LEDGER&accounts=BASE64_ACCOUNTS
-```
+Opening the website or the v2 Home Screen web-app icon by itself does not supply v1 with financial data. A message asking you to open from your Shortcut is expected. Use the original Shortcut or its Home Screen icon to load the latest entries, as in v1. If an app update reload interrupts a data-filled view, run the original Shortcut again after the update is visible.
 
-Both values are ordinary UTF-8 Base64 with no line breaks. The parser also accepts Base64URL and percent-encoded text for compatibility.
+If the green deployment has finished but a Safari reload still shows v2, close that dashboard tab, open the clean dashboard link above in a new Safari tab, and reload after it finishes loading. Then run the original Shortcut. Do not change or erase the ledger to fix an app-cache problem.
 
-## `accounts.json`
+## Keep using the current files
 
-```json
-{
-  "version": 1,
-  "accounts": [
-    { "name": "Cash", "type": "Cash", "currency": "JPY", "openingBalance": 0 },
-    { "name": "PayPay", "type": "E-money", "currency": "JPY", "openingBalance": 0 },
-    { "name": "WeChat Pay", "type": "E-money", "currency": "CNY", "openingBalance": 0 },
-    { "name": "ゆうちょ", "type": "Bank", "currency": "JPY", "openingBalance": 0 },
-    { "name": "金庫", "type": "Bank", "currency": "JPY", "openingBalance": 0 },
-    { "name": "Visa Card", "type": "Credit Card", "currency": "JPY", "openingBalance": 0 }
-  ]
-}
-```
+Continue using **iCloud Drive/Personal Ledger/ledger.txt** and **accounts.json**, and the existing Add Expense, Add Income, Transfer, and Record Payment Shortcuts.
 
-Asset opening balances are amounts held. Credit-card opening balances are positive amounts owed. CNY accounts show their native balance and a JPY equivalent using the newest dated CNY transaction with a positive `fxRate`.
+Do not replace the current ledger with an older v1 backup: the current file may contain newer transactions. The unfinished v2 helper and unused v2 folders can remain unused. Do not run a migration.
 
-Account balances understand `Expense`, `Income`, `Transfer`, and `Record Payment`. For transfers, `account` is the source and `toAccount` is the destination. A card payment may be recorded either asset → card, or card in `account` with the funding asset in `toAccount`; the dashboard recognizes both forms.
+The original NDJSON transaction fields remain compatible:
 
-## Privacy notes
+date, type, account, toAccount, category, amount, currency, fxRate, jpyAmount, merchant, note.
 
-- The URL fragment never forms part of the HTTP request to GitHub Pages.
-- The fragment is removed with `history.replaceState()` in an inline script at the top of the document, before the dashboard code loads.
-- Financial records exist only in page memory for that session.
-- Opening the clean GitHub Pages URL directly intentionally shows an empty state. Run the Shortcut whenever you want the latest data.
-- Browser extensions, iOS accessibility features, screenshots, and a compromised device can still read what is visible in the browser. This design protects the data from the web host; it is not a replacement for device security.
-- Very large ledgers can eventually exceed practical URL limits. If that happens, split the ledger by year or move to a different local transport while keeping the same NDJSON schema.
+## How the three additions work
 
-## Local preview
+### Transactions
 
-Serve the folder with any static web server and open its local URL. Opening `index.html` directly works for the dashboard but not for service-worker installation.
+There is no fixed display limit. Ten entries are rendered at a time, newest first. Period changes and category-month selections return to page one. A category-month selection affects the transaction list; the overview and donut keep their selected period.
+
+Pagination does not remove the practical size limits of v1's URL-fragment transport or the phone's memory. It lets you browse every successfully loaded transaction. No new transport or persistent financial cache is introduced.
+
+### Provisional asset subtotal
+
+The subtotal uses configured non-card accounts included in assets. It applies recorded opening balances and transactions through the current time, then converts supported foreign balances into JPY. It is an asset subtotal, not net worth.
+
+The **About these balances** disclosure explains assumptions, missing accounts, missing rates, and skipped ledger lines. Missing opening balances assume zero; missing opening dates apply all loaded entries. These assumptions are why the subtotal remains provisional.
+
+No account-file changes are required. If already present, optional openingDate, includeInAssets, valuationRate and valuationDate are respected. An opening balance is before entries on its opening date. A dated explicit valuation rate takes priority; otherwise the latest available recorded exchange rate is used, not a live market rate.
+
+Accounts that cannot be valued are excluded from the subtotal and identified. A native balance can still be shown when its JPY valuation is unavailable. An unknown native balance is labelled Unavailable rather than displayed as zero. Cross-currency movements estimated from a valuation rate are identified. Both existing card-payment directions remain supported.
+
+### Category rhythms
+
+Expense totals are grouped by recorded category and calendar month, in JPY, for the selected year. Income, transfers and card payments are excluded. Blank categories appear as Other.
+
+All categories in that year are shown, sorted by annual spending. Colour strength uses the same scale across the whole year, so amounts can be compared between categories. Each cell exposes its exact amount and count when selected, including to assistive technology.
+
+Dots mean no expenses were loaded for that cell. They do not establish that a month's records are complete. Like the original charts, amounts use recorded JPY values or recorded transaction exchange rates.
+
+## Privacy and compatibility
+
+GitHub Pages serves generic HTML, CSS, JavaScript and icons. Financial values arrive only in the URL fragment, which is removed from the visible address before other resources load. Dashboard code reads the values in memory and does not upload them or save them in browser storage.
+
+The service worker caches generic app files only. This release replaces old v1/v2 app caches; it does not delete unrelated browser storage, old v2 IndexedDB data, or anything in iCloud. Unused v2 code files in the repository are not loaded by this dashboard.
+
+## Verification
+
+Desktop checks with synthetic records covered pagination across 100,003 entries, list rendering, category-month totals and selection, page/period reset, asset balances, both card-payment directions, foreign exchange, missing values, opening dates, and app-cache replacement. The original donut/line-chart code, type palette, and manifest were retained.
+
+These checks do not establish unlimited URL transport capacity. Browser appearance and iPhone activation still need confirmation on the device after deployment.
