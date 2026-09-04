@@ -1,0 +1,9 @@
+{
+  "version": 2,
+  "instructions": "Private template: replace placeholders and save in iCloud only. Never upload the filled version.",
+  "expense": {"account": "CHOOSE ACCOUNT", "currency": "JPY", "lastCategory": "CHOOSE CATEGORY"},
+  "income": {"account": "CHOOSE ACCOUNT", "currency": "JPY", "lastCategory": "CHOOSE CATEGORY"},
+  "fx": {},
+  "favourites": [],
+  "largeAmountJPY": null
+}
