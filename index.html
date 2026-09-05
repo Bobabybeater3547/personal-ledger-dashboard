@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-  <meta name="theme-color" content="#f2f0e9" media="(prefers-color-scheme: light)">
+  <meta name="theme-color" content="#f6f5f1" media="(prefers-color-scheme: light)">
   <meta name="theme-color" content="#171816" media="(prefers-color-scheme: dark)">
   <meta name="description" content="A private, local-first view of your Personal Ledger.">
   <meta name="apple-mobile-web-app-capable" content="yes">
@@ -20,15 +20,17 @@
   <link rel="stylesheet" href="styles.css">
 </head>
 <body>
+  <a class="skip-link" href="#period-label">Skip to overview</a>
   <noscript>This dashboard needs JavaScript to read your ledger locally.</noscript>
 
   <main class="page-shell">
     <header class="masthead">
       <a class="wordmark" href="./" aria-label="Personal Ledger home">
-        <span>Personal</span>
+        <span class="wordmark-small">Personal</span>
         <span class="wordmark-serif">Ledger</span>
       </a>
-      <div class="issue-mark" aria-hidden="true">
+      <div class="issue-mark">
+        <span class="issue-caption">Private ledger</span>
         <span id="issue-month">—</span>
         <span id="issue-year">—</span>
       </div>
@@ -43,7 +45,7 @@
     </section>
 
     <nav class="period-nav" aria-label="Ledger period">
-      <div class="period-track" role="list">
+      <div class="period-track">
         <button class="period-button is-active" type="button" data-period="thisMonth" aria-pressed="true">This month</button>
         <button class="period-button" type="button" data-period="lastMonth" aria-pressed="false">Last month</button>
         <button class="period-button" type="button" data-period="twoMonthsAgo" aria-pressed="false">2 months ago</button>
@@ -55,9 +57,9 @@
 
     <section class="overview" aria-labelledby="period-label">
       <div class="overview-primary">
-        <p class="eyebrow" id="period-label">This month</p>
+        <h1 class="period-title" id="period-label" tabindex="-1">This month</h1>
+        <p class="hero-caption">Expenses <span>· JPY</span></p>
         <p class="hero-value" id="expense-total">¥0</p>
-        <p class="hero-caption">Expenses</p>
       </div>
 
       <dl class="overview-secondary">
@@ -108,7 +110,7 @@
         <header class="section-heading">
           <p class="section-number">02</p>
           <div>
-            <h2 id="trend-title">Year</h2>
+            <h2 id="trend-title">Across the year</h2>
             <p>Trailing 12 months</p>
           </div>
         </header>
@@ -159,6 +161,7 @@
       </div>
     </section>
 
+    <div class="ledger-grid">
     <section class="feature-section accounts-section" aria-labelledby="accounts-title">
       <header class="section-heading">
         <p class="section-number">04</p>
@@ -185,7 +188,7 @@
       <header class="section-heading">
         <p class="section-number">05</p>
         <div>
-          <h2 id="recent-title" tabindex="-1">Recent</h2>
+          <h2 id="recent-title" tabindex="-1">Entries</h2>
           <p id="recent-caption">Latest entries</p>
         </div>
       </header>
@@ -203,6 +206,7 @@
         <button class="text-button" id="page-next" type="button" disabled>Next →</button>
       </nav>
     </section>
+    </div>
 
     <footer class="footer">
       <p>Personal Ledger</p>

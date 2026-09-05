@@ -260,8 +260,18 @@
   }
 
   function renderOverview(summary) {
-    els.periodLabel.textContent = PERIOD_LABELS[state.period];
-    els.expenseTotal.textContent = formatJPY(summary.expenses);
+    const monthly = ["thisMonth", "lastMonth", "twoMonthsAgo"].includes(state.period);
+    els.periodLabel.textContent = monthly
+      ? summary.range.start.toLocaleDateString("en-US", { month: "long", year: "numeric" })
+      : state.period === "allTime" ? "All time" : String(summary.range.start.getFullYear());
+    const parts = new Intl.NumberFormat("ja-JP", { style: "currency", currency: "JPY", maximumFractionDigits: 0 }).formatToParts(summary.expenses);
+    els.expenseTotal.replaceChildren(...parts.map((part) => {
+      const span = document.createElement("span");
+      if (part.type === "currency") span.className = "currency-mark";
+      span.textContent = part.value;
+      return span;
+    }));
+    els.expenseTotal.setAttribute("aria-label", formatJPY(summary.expenses));
     els.incomeTotal.textContent = formatJPY(summary.income);
     els.netTotal.textContent = formatJPY(summary.net);
     els.transactionCount.textContent = new Intl.NumberFormat().format(summary.transactions.length);
@@ -280,6 +290,7 @@
 
     els.categoryList.querySelectorAll(".category-row").forEach((row) => {
       row.classList.toggle("is-active", row.dataset.category === name);
+      row.setAttribute("aria-pressed", String(row.dataset.category === name));
     });
 
     if (selected) {
@@ -343,6 +354,13 @@
       segment.addEventListener("focus", () => setActiveCategory(category.name, categories, colors));
       segment.addEventListener("blur", () => setActiveCategory(null, categories, colors));
       segment.addEventListener("click", () => setActiveCategory(state.activeCategory === category.name ? null : category.name, categories, colors));
+      segment.addEventListener("keydown", (event) => {
+        if (event.key === "Enter" || event.key === " ") {
+          event.preventDefault();
+          setActiveCategory(category.name, categories, colors);
+        }
+        if (event.key === "Escape") setActiveCategory(null, categories, colors);
+      });
       els.donutSegments.appendChild(segment);
       offset += segmentLength;
 
@@ -421,7 +439,7 @@
 
     const bounds = els.trendChart.getBoundingClientRect();
     const localX = event && Number.isFinite(event.clientX) ? event.clientX - bounds.left : (xPosition / chartWidth) * bounds.width;
-    const tooltipWidth = Math.min(170, bounds.width * 0.55);
+    const tooltipWidth = els.trendTooltip.getBoundingClientRect().width;
     const left = Math.max(0, Math.min(bounds.width - tooltipWidth, localX - tooltipWidth / 2));
     els.trendTooltip.style.left = `${left}px`;
     els.trendTooltip.style.top = "0.5rem";
@@ -445,7 +463,10 @@
     const accent = styles.getPropertyValue("--accent").trim();
     const blue = styles.getPropertyValue("--blue").trim();
 
-    els.trendChart.replaceChildren();
+    const title = createSvgElement("title", { id: "trend-chart-title" });
+    title.textContent = "Income and expense trend";
+    els.trendDescription = createSvgElement("desc", { id: "trend-chart-description" });
+    els.trendChart.replaceChildren(title, els.trendDescription);
 
     [0, 0.5, 1].forEach((portion) => {
       const yPosition = padding.top + innerHeight * portion;
@@ -481,9 +502,9 @@
       const hitWidth = innerWidth / (months.length - 1);
       const hit = createSvgElement("rect", {
         class: "chart-hit-area",
-        x: x(index) - hitWidth / 2,
+        x: Math.max(0, x(index) - hitWidth / 2),
         y: padding.top,
-        width: hitWidth,
+        width: Math.min(width, x(index) + hitWidth / 2) - Math.max(0, x(index) - hitWidth / 2),
         height: innerHeight,
         tabindex: 0,
         role: "button",
@@ -494,6 +515,14 @@
       hit.addEventListener("pointerleave", hideTrendTooltip);
       hit.addEventListener("focus", (event) => showTrendTooltip(event, month, x(index), width));
       hit.addEventListener("blur", hideTrendTooltip);
+      hit.addEventListener("click", (event) => showTrendTooltip(event, month, x(index), width));
+      hit.addEventListener("keydown", (event) => {
+        if (event.key === "Escape") hideTrendTooltip();
+        if (event.key === "Enter" || event.key === " ") {
+          event.preventDefault();
+          showTrendTooltip(null, month, x(index), width);
+        }
+      });
       els.trendChart.appendChild(hit);
     });
 
@@ -942,6 +971,7 @@
         });
         renderPeriod();
         renderRhythms();
+        button.scrollIntoView({ block: "nearest", inline: "nearest" });
       });
     });
   }
