@@ -1,29 +1,34 @@
-# Personal Ledger — v3
+# Personal Ledger — v3.1
 
-An aesthetics-first Nordic editorial redesign of the existing dashboard. The page keeps the current Shortcuts, NDJSON files, session-only data flow, account calculations, pagination and Category Rhythms. No migration is needed.
+The Nordic editorial dashboard, with Apple-style controls and three practical additions: any month/year, account opening details, and file loading independent of URL size.
 
-## What changed
+## Everyday use
 
-A clearer serif masthead and period heading; refined sans-serif amounts; off-white paper and quiet olive/slate infographics; underlined period controls; thinner chart lines; compact account and entry rows; an asymmetric desktop layout and single-column phone layout. Dark mode, reduced motion, safe-area padding, keyboard controls and chart descriptions are included.
+- **Choose date** opens a Month / Year segmented control. Pick a month, enter any year from 1900 to 9998, or use the year stepper. The arrows beside the date move one month or one year. The original shortcuts to recent periods remain.
+- **Open files** reads ledger.txt and accounts.json directly from iCloud Drive / Files. Files are processed locally, in a worker, without encoding the ledger in a URL. Select either file to replace only that part of the view. Multiple ledger parts must not overlap; they replace the loaded history together.
+- **Edit** beside an account changes its opening date, opening balance and asset inclusion. **Add account** adds an account to the loaded account file. Apply recalculates the local view; it is a draft until you save and reopen the file.
+- **Save account changes** shares or downloads the updated accounts.json. Save it in your existing iCloud Personal Ledger folder, replacing the previous account file after making a backup. Reopen the saved file to verify that it matches. The dashboard cannot silently overwrite iCloud Drive.
 
-## Publish
+Read [the file workflow](docs/FILES.md) before your first account save. Your existing Shortcut and URL fragment still work. No transaction migration is required.
 
-This is the existing GitHub Pages repository. Commit the changes to main; the existing Deploy GitHub Pages workflow publishes them. Only generic dashboard code belongs here. Keep ledger.txt, accounts.json and backups in iCloud.
+## Private by design
 
-After deployment, open the clean website once online to receive the new shell, then reopen it from your existing Shortcut. If the installed shell is still old, close and reopen the dashboard after the update. No ledger edits or replacement are required.
+Financial data stays in session memory. Closing or reloading requires reopening the files or using the existing Shortcut. No server, analytics, remote fonts, live exchange-rate calls or persistent financial browser database is introduced. The service worker caches generic application assets only. The public repository contains no personal ledger, account file or private fixture.
 
-## Preserved behavior
+The direct-file workflow removes the URL transport limit, not device memory limits. A 100,000-entry synthetic import is tested. The legacy URL route retains its original practical size limit.
 
-- Ten entries per page, Previous / Next / page-number jump; newest first with stable same-date ordering.
-- Provisional JPY asset subtotal above the account groups, excluding credit cards and opted-out assets. Unknown balances and missing conversion rates remain visible as caveats.
-- Category Rhythms year selector and tappable category-month cells, View entries and Back to selected period.
-- Original account opening dates, FX valuation, native transfers and both credit-card-payment directions.
-- The original fragment formats and immediate URL cleanup; financial data stays in browser-session memory. No remote libraries, analytics, fonts, new storage, or transport migration.
+## Compatibility
 
-The practical URL-size limitation remains. The legacy v2 modules are unused by the active index.html → app.js entry point.
+Previous / Next / page jump, category-month drill-down and year selection remain. Credit cards are excluded from the provisional asset subtotal. Opening dates, native transfer amounts, both legacy payment directions, missing valuations and stable same-date ordering are preserved.
 
-## Development
+Existing account names, types and currencies stay fixed when editing to avoid breaking history. Unknown account fields and the original array/object envelope survive exports. The dashboard never rewrites ledger.txt. If your logging Shortcuts have a hard-coded account menu, update those choices after adding an account; browser edits cannot modify a Shortcut.
 
-Serve the directory with any static HTTP server. There are no build dependencies. Run `node --test tests/compatibility.cjs` for synthetic-data regression checks. Do not use private financial fixtures.
+## Development and deployment
 
-See [the design system](docs/DESIGN.md) for typography, spacing, colors, component principles and the section audit. Existing Shortcut guides remain available in SHORTCUT.md and docs/.
+No build dependencies. Serve this directory with a static HTTP server. Run `node --test tests/*.cjs` (or list the test files explicitly if your shell does not expand the pattern). Tests use synthetic data only.
+
+The existing main-branch GitHub Pages workflow publishes the site. Deploy all tracked files, including files.js and file-worker.js. After deployment, open the clean URL online to update the shell, then reopen through your Shortcut or Open files. Real iPhone Safari, the Files share sheet and iCloud replacement still need device verification.
+
+[Design system](docs/DESIGN.md) · [File workflow](docs/FILES.md) · [Legacy Shortcut](SHORTCUT.md)
+
+Older v2 architecture and migration guides describe an abandoned implementation. They are not required for this version; no v2 migration should be run.

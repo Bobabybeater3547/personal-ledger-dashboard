@@ -6,6 +6,7 @@
   <meta name="theme-color" content="#f6f5f1" media="(prefers-color-scheme: light)">
   <meta name="theme-color" content="#171816" media="(prefers-color-scheme: dark)">
   <meta name="description" content="A private, local-first view of your Personal Ledger.">
+  <meta name="referrer" content="no-referrer">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="default">
   <meta name="apple-mobile-web-app-title" content="Ledger">
@@ -33,13 +34,14 @@
         <span class="issue-caption">Private ledger</span>
         <span id="issue-month">—</span>
         <span id="issue-year">—</span>
+        <button class="text-button file-access" id="open-files" type="button">Open files</button>
       </div>
     </header>
 
     <section id="notice" class="notice" hidden aria-live="polite">
       <div>
         <p class="eyebrow">Private view</p>
-        <p id="notice-copy">Open this page from your iPhone Shortcut to load the latest ledger.</p>
+        <p id="notice-copy">Open your ledger files, or use your existing iPhone Shortcut.</p>
       </div>
       <span class="privacy-mark" aria-hidden="true">Local only</span>
     </section>
@@ -57,7 +59,14 @@
 
     <section class="overview" aria-labelledby="period-label">
       <div class="overview-primary">
-        <h1 class="period-title" id="period-label" tabindex="-1">This month</h1>
+        <div class="period-heading">
+          <h1 class="period-title" id="period-label" tabindex="-1">This month</h1>
+          <div class="date-navigation" aria-label="Choose a period">
+            <button class="icon-button" id="period-back" type="button" aria-label="Previous month">‹</button>
+            <button class="text-button" id="choose-date" type="button" aria-haspopup="dialog">Choose date</button>
+            <button class="icon-button" id="period-forward" type="button" aria-label="Next month">›</button>
+          </div>
+        </div>
         <p class="hero-caption">Expenses <span>· JPY</span></p>
         <p class="hero-value" id="expense-total">¥0</p>
       </div>
@@ -111,7 +120,7 @@
           <p class="section-number">02</p>
           <div>
             <h2 id="trend-title">Across the year</h2>
-            <p>Trailing 12 months</p>
+            <p id="trend-caption">Trailing 12 months</p>
           </div>
         </header>
 
@@ -178,6 +187,11 @@
         <p class="asset-scope" id="asset-scope">Based on recorded account balances, valued in JPY.</p>
       </div>
       <div class="account-groups" id="account-groups"></div>
+      <div class="account-actions">
+        <button class="text-button" id="add-account" type="button">+ Add account</button>
+        <button class="text-button" id="export-accounts" type="button" hidden>Save account changes</button>
+      </div>
+      <p class="account-status" id="account-status" role="status" aria-live="polite"></p>
       <details class="balance-details">
         <summary>About these balances</summary>
         <ul id="asset-notes"></ul>
@@ -214,6 +228,63 @@
     </footer>
   </main>
 
+  <dialog class="editor-dialog" id="date-dialog" aria-labelledby="date-title">
+    <form id="date-form">
+      <header class="dialog-heading"><div><p class="eyebrow">Period</p><h2 id="date-title">Choose date</h2></div><button type="button" class="icon-button" data-close="date-dialog" aria-label="Close date picker">×</button></header>
+      <div class="form-grid">
+        <fieldset class="segmented-control full-field" id="date-mode"><legend class="sr-only">View by</legend><label><input id="date-view-month" name="date-view" type="radio" value="month" checked><span>Month</span></label><label><input id="date-view-year" name="date-view" type="radio" value="year"><span>Year</span></label></fieldset>
+        <div class="full-field year-field"><label for="date-year">Year</label><div class="year-stepper"><button id="picker-year-back" type="button" aria-label="Earlier year">‹</button><input id="date-year" type="number" inputmode="numeric" min="1900" max="9998" required><button id="picker-year-forward" type="button" aria-label="Later year">›</button></div></div>
+        <label id="date-month-label" class="full-field">Month<select id="date-month"><option value="0">January</option><option value="1">February</option><option value="2">March</option><option value="3">April</option><option value="4">May</option><option value="5">June</option><option value="6">July</option><option value="7">August</option><option value="8">September</option><option value="9">October</option><option value="10">November</option><option value="11">December</option></select></label>
+      </div>
+      <p class="form-note">Browse any month or year. Totals reflect the entries you have loaded.</p>
+      <footer class="dialog-actions"><button type="submit" class="solid-button">View period</button></footer>
+    </form>
+  </dialog>
+
+  <dialog class="editor-dialog" id="files-dialog" aria-labelledby="files-title">
+    <form id="files-form">
+      <header class="dialog-heading"><div><p class="eyebrow">Your files, privately</p><h2 id="files-title">Open your ledger</h2></div><button type="button" class="icon-button" data-close="files-dialog" aria-label="Close file import">×</button></header>
+      <p class="form-note">Choose files from iCloud Drive or this device. They are read here, never uploaded. Larger ledgers no longer need to fit in a URL.</p>
+      <label class="file-field">Transactions<input id="ledger-files" type="file" accept=".txt,.ndjson,.jsonl,text/plain" multiple><span>ledger.txt, or non-overlapping parts of your ledger. Replaces the currently loaded history.</span></label>
+      <label class="file-field">Accounts<input id="accounts-file" type="file" accept=".json,application/json"><span>Your existing accounts.json. Leave either field empty to keep that part of your current view.</span></label>
+      <p class="form-note">For the complete view, select both files. Files stay in this session; reopen them after closing or reloading the page.</p>
+      <p id="import-status" class="form-status" role="status" aria-live="polite"></p>
+      <footer class="dialog-actions"><button class="text-button" type="button" data-close="files-dialog">Cancel</button><button id="import-submit" class="solid-button" type="submit">Open files</button></footer>
+    </form>
+  </dialog>
+
+  <dialog class="editor-dialog" id="account-dialog" aria-labelledby="account-editor-title">
+    <form id="account-form">
+      <header class="dialog-heading"><div><p class="eyebrow">Accounts</p><h2 id="account-editor-title">Add an account</h2></div><button class="icon-button" type="button" data-close="account-dialog" aria-label="Close account editor">×</button></header>
+      <div class="form-grid">
+        <label class="full-field">Account name<input id="account-name" maxlength="100" required autocomplete="off"></label>
+        <label>Type<select id="account-type"><option>Bank</option><option>Cash</option><option>Savings</option><option>Investment</option><option>Credit card</option><option>Account</option></select></label>
+        <label>Currency<input id="account-currency" value="JPY" pattern="[A-Za-z]{3}" maxlength="3" required autocapitalize="characters" autocomplete="off" list="currency-options"></label>
+        <datalist id="currency-options"><option value="JPY"><option value="USD"><option value="CNY"><option value="EUR"><option value="GBP"></datalist>
+        <label>Opening balance<input id="account-opening" type="text" inputmode="decimal" autocomplete="off" placeholder="0"></label>
+        <label>Opening date<input id="account-date" type="date" min="1900-01-01" max="9998-12-31"></label>
+        <label class="checkbox-field full-field"><input id="account-include" type="checkbox" role="switch" checked>Include in asset subtotal</label>
+      </div>
+      <p class="form-note" id="account-identity-note" hidden>Name, type and currency stay fixed to preserve existing transaction links.</p>
+      <p class="form-note">The opening balance is the balance before entries on this date. Changing it recalculates the account. Credit cards remain excluded from assets.</p>
+      <p class="form-note">Apply previews your changes here. Save the account file to iCloud to keep them.</p>
+      <p id="account-error" class="form-status" role="alert"></p>
+      <footer class="dialog-actions"><button class="text-button" type="button" data-close="account-dialog">Cancel</button><button class="solid-button" type="submit">Apply changes</button></footer>
+    </form>
+  </dialog>
+
+  <dialog class="editor-dialog" id="save-dialog" aria-labelledby="save-title">
+    <header class="dialog-heading"><div><p class="eyebrow">Keep your changes</p><h2 id="save-title">Back to iCloud</h2></div><button class="icon-button" type="button" data-close="save-dialog" aria-label="Close save instructions">×</button></header>
+    <p class="form-note">Save the updated <strong>accounts.json</strong> to your Personal Ledger folder in iCloud Drive, replacing the old account file. Keep a copy of the original before replacing it.</p>
+    <p class="form-note">On iPhone, use Share file → Save to Files. If sharing is unavailable, download the file and move it from Downloads in Files. Safari cannot replace your iCloud file automatically.</p>
+    <div class="save-summary" id="save-summary"></div>
+    <p class="form-note">Then reopen the saved account file here to verify it. Your ledger.txt is unchanged.</p>
+    <p class="form-status" id="save-status" role="status" aria-live="polite"></p>
+    <footer class="dialog-actions"><button id="download-accounts" class="text-button" type="button">Download file</button><button id="share-accounts" class="solid-button" type="button">Share file</button></footer>
+    <button id="verify-accounts" class="text-button verify-button" type="button">Reopen saved account file →</button>
+  </dialog>
+
+  <script src="files.js" defer></script>
   <script src="app.js" defer></script>
 </body>
 </html>

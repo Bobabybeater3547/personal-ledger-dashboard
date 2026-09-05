@@ -216,3 +216,111 @@ noscript { display: block; padding: 1rem; border-bottom: 1px solid var(--ink); }
 @media (prefers-color-scheme: dark) {
   :root { --paper: #171816; --paper-raised: #242621; --ink: #eeeee6; --muted: #afb2a8; --faint: #85897e; --rule: #3b3e35; --rule-strong: #717769; --accent: #b0bd9c; --accent-soft: #758064; --blue: #90adb7; --olive: #b6b385; --mauve: #b4a19f; --gold: #beaa85; }
 }
+/* Focused tools, composed as paper sheets. */
+.file-access { grid-column: 1/-1; justify-self: end; margin-top: .35rem; min-height: 44px; font-size: .75rem; letter-spacing: 0; text-transform: none; }
+.period-heading { margin-bottom: 1.5rem; }
+.period-heading .period-title { margin-bottom: .65rem; }
+.date-navigation { display: flex; align-items: center; gap: .5rem; width: fit-content; }
+.icon-button { display: inline-grid; place-items: center; min-width: 44px; height: 44px; padding: 0; border: 1px solid var(--rule); border-radius: 50%; background: transparent; font-size: 1.1rem; line-height: 1; }
+.icon-button:disabled { color: var(--faint); border-color: transparent; cursor: default; }
+.date-navigation .text-button { border-bottom-color: transparent; color: var(--muted); }
+.date-navigation .icon-button { border-color: transparent; }
+.date-navigation .icon-button:not(:disabled):hover { border-color: var(--rule); }
+.account-actions { display: flex; flex-wrap: wrap; justify-content: space-between; gap: .75rem; margin-top: 1rem; }
+.account-status { color: var(--muted); font-size: .8125rem; line-height: 1.5; }
+.account-status:empty { display: none; }
+.account-edit { display: inline-block; margin-top: .3rem; padding: .35rem 0; min-height: 44px; border: 0; background: none; color: var(--muted); text-decoration: underline; text-underline-offset: .25em; font-size: .75rem; }
+.account-row dt { display: grid; grid-template-columns: minmax(0,1fr) auto; align-items: center; column-gap: .5rem; }
+.account-name, .account-type { grid-column: 1; }
+.account-edit { grid-column: 2; grid-row: 1 / span 2; margin: 0; padding: .4rem; }
+html:has(dialog[open]) { overflow: hidden; }
+.editor-dialog { width: min(100% - 2rem, 32rem); max-height: calc(100dvh - 3rem); margin: auto; padding: 1.75rem; border: 1px solid var(--rule); background: var(--paper); color: var(--ink); box-shadow: 0 1.5rem 5rem rgb(0 0 0 / 12%); overscroll-behavior: contain; }
+.editor-dialog::backdrop { background: rgb(20 23 20 / 32%); }
+.dialog-heading { display: flex; gap: 1rem; justify-content: space-between; align-items: start; padding-bottom: 1.5rem; margin-bottom: 1.5rem; border-bottom: 1px solid var(--rule); }
+.dialog-heading h2 { margin: .35rem 0 0; font: 400 2rem/1.1 var(--serif); letter-spacing: -.04em; }
+.dialog-heading .icon-button { flex-shrink: 0; }
+.form-grid { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 1.25rem 1rem; }
+.form-grid label, .file-field { display: flex; flex-direction: column; gap: .5rem; font-size: .875rem; min-width: 0; }
+.full-field { grid-column: 1/-1; }
+.form-grid input, .form-grid select { width: 100%; min-width: 0; min-height: 48px; border: 0; border-bottom: 1px solid var(--rule-strong); border-radius: 0; background: var(--paper-raised); padding: .65rem .7rem; font-size: 1rem; }
+.form-grid input[readonly], .form-grid select:disabled { color: var(--muted); background: transparent; opacity: 1; }
+.form-grid .checkbox-field { flex-direction: row; align-items: center; gap: .75rem; min-height: 44px; }
+.checkbox-field input { width: 20px; height: 20px; min-height: 20px; accent-color: var(--accent); }
+.form-note { margin: 1.1rem 0; color: var(--muted); font-size: .875rem; line-height: 1.6; }
+.form-note strong { color: var(--ink); font-weight: 500; }
+.form-status { font-size: .875rem; line-height: 1.5; color: var(--ink); padding-left: .75rem; border-left: 2px solid var(--accent); }
+.form-status:empty { display: none; }
+.dialog-actions { display: flex; gap: 1rem; align-items: center; justify-content: flex-end; flex-wrap: wrap; margin-top: 1.75rem; padding-top: 1.25rem; border-top: 1px solid var(--rule); }
+.solid-button { min-height: 48px; padding: .7rem 1.1rem; border: 1px solid var(--ink); background: var(--ink); color: var(--paper); font-size: .875rem; }
+.solid-button:disabled { opacity: .5; cursor: wait; }
+.file-field { padding-block: 1rem; border-bottom: 1px solid var(--rule); }
+.file-field input { max-width: 100%; font-size: .875rem; min-height: 44px; padding-block: .25rem; }
+.file-field input::file-selector-button { border: 1px solid var(--rule-strong); padding: .6rem .75rem; margin-right: .75rem; background: transparent; color: var(--ink); font: inherit; cursor: pointer; }
+.file-field span { color: var(--muted); font-size: .8125rem; }
+.save-summary { padding: 1rem 0; border-block: 1px solid var(--rule); font-size: .875rem; }
+.verify-button { margin-top: 1rem; }
+@media (max-width: 600px) {
+  .editor-dialog { width: 100%; max-width: none; max-height: calc(100dvh - max(1rem, env(safe-area-inset-top))); margin: auto 0 0; padding: 1.5rem max(1.25rem,env(safe-area-inset-right)) max(1.5rem,env(safe-area-inset-bottom)) max(1.25rem,env(safe-area-inset-left)); border-inline: 0; border-bottom: 0; }
+  .dialog-heading h2 { font-size: 1.8rem; }
+}
+@media (max-width: 360px) { .form-grid { grid-template-columns: minmax(0,1fr); } }
+@media (prefers-reduced-motion: no-preference) {
+  .editor-dialog[open] { animation: sheet-arrive 180ms var(--ease); }
+  @keyframes sheet-arrive { from { transform: translateY(8px); } to { transform: translateY(0); } }
+}
+/* Apple-style interaction layer; the editorial page remains deliberately unboxed. */
+:root { --ui: -apple-system, BlinkMacSystemFont, 'Segoe UI', var(--sans); }
+button, input, select, .form-grid label, .file-field, .form-note, .form-status, .page-form { font-family: var(--ui); }
+button, input, select, summary { -webkit-tap-highlight-color: transparent; }
+button { transition: background-color 160ms var(--ease), color 160ms var(--ease), transform 160ms var(--ease); }
+button:not(:disabled):active { transform: scale(.97); }
+button:disabled { opacity: .5; }
+.text-button { border: 0; border-radius: 10px; padding: .55rem .75rem; font-weight: 500; }
+.date-navigation { gap: .2rem; padding: .2rem; border: 1px solid var(--rule); border-radius: 99px; }
+.date-navigation .icon-button { width: 44px; height: 44px; border: 0; font-size: 1.6rem; }
+.date-navigation .text-button { border-radius: 99px; color: var(--ink); }
+.icon-button { border: 0; background: var(--paper-raised); }
+.period-track { scroll-snap-type: x proximity; scrollbar-width: none; padding-inline: .15rem; }
+.period-track::-webkit-scrollbar { display: none; }
+.period-button { scroll-snap-align: start; }
+.rhythm-scroll { -webkit-overflow-scrolling: touch; scroll-padding-inline-start: 9rem; }
+.rhythm-cell { border-radius: 6px; }
+.rhythm-cell::before { border-radius: 4px; }
+.rhythm-toolbar select, .page-form input { border: 1px solid var(--rule); border-radius: 10px; background: var(--paper-raised); }
+.account-edit { border-radius: 8px; text-decoration: none; font-weight: 500; }
+.editor-dialog { border: 0; border-radius: 24px; padding: 1.5rem; scroll-behavior: smooth; -webkit-overflow-scrolling: touch; }
+.dialog-heading { position: sticky; top: -1.5rem; z-index: 2; background: var(--paper); padding-top: 1.5rem; margin-top: -1.5rem; align-items: center; }
+.dialog-heading h2 { font-size: 1.9rem; }
+.dialog-heading .icon-button { width: 44px; height: 44px; font-size: 1.35rem; color: var(--muted); }
+.form-grid input, .form-grid select { border: 1px solid transparent; border-radius: 11px; padding: .75rem; }
+.form-grid input:focus-visible, .form-grid select:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.form-grid select { appearance: auto; }
+.form-grid input[readonly], .form-grid select:disabled { background: var(--paper-raised); }
+.solid-button { border: 0; border-radius: 99px; padding: .8rem 1.35rem; font-weight: 600; }
+.file-field input::file-selector-button { border: 0; border-radius: 10px; min-height: 44px; background: var(--paper-raised); font-family: var(--ui); font-weight: 500; }
+.segmented-control { display: grid; grid-template-columns: 1fr 1fr; gap: 3px; padding: 3px; margin: 0 0 .25rem; border: 0; border-radius: 12px; background: var(--paper-raised); }
+.form-grid .segmented-control label { display: block; position: relative; }
+.segmented-control input { position: absolute; opacity: 0; width: 1px; height: 1px; min-height: 0; padding: 0; pointer-events: none; }
+.segmented-control span { display: grid; min-height: 44px; place-items: center; border-radius: 9px; font-weight: 500; cursor: pointer; }
+.segmented-control input:checked + span { background: var(--paper); box-shadow: 0 1px 4px rgb(0 0 0 / 10%); }
+.segmented-control input:focus-visible + span { outline: 2px solid var(--accent); outline-offset: -2px; }
+.year-stepper { display: grid; grid-template-columns: 48px minmax(0,1fr) 48px; align-items: center; background: var(--paper-raised); border-radius: 11px; }
+.year-stepper button { height: 48px; border: 0; border-radius: 11px; background: transparent; font-size: 1.6rem; }
+.year-stepper input { text-align: center; appearance: textfield; font-variant-numeric: tabular-nums; }
+.year-stepper input::-webkit-inner-spin-button, .year-stepper input::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
+@media (max-width: 600px) {
+  .editor-dialog { border-radius: 24px 24px 0 0; padding-bottom: max(1.5rem,env(safe-area-inset-bottom)); }
+  .dialog-actions { gap: .5rem; }
+  .dialog-actions .solid-button { flex: 1 1 auto; }
+  .form-grid input, .form-grid select { font-size: 1.0625rem; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .editor-dialog { scroll-behavior: auto; }
+  button:not(:disabled):active { transform: none; }
+}
+.checkbox-field input { appearance: none; position: relative; flex: 0 0 auto; width: 46px; height: 28px; min-height: 28px; padding: 0; border: 0; border-radius: 99px; background: var(--rule-strong); cursor: pointer; transition: background-color 160ms var(--ease); }
+.checkbox-field input::before { content: ''; position: absolute; width: 22px; height: 22px; top: 3px; left: 3px; border-radius: 50%; background: #fff; box-shadow: 0 1px 3px rgb(0 0 0 / 15%); transition: transform 160ms var(--ease); }
+.checkbox-field input:checked { background: var(--accent); }
+.checkbox-field input:checked::before { transform: translateX(18px); }
+.checkbox-field input:disabled { opacity: .45; cursor: default; }
+.year-field { display: flex; flex-direction: column; gap: .5rem; }

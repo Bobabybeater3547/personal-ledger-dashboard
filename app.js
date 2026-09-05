@@ -13,6 +13,12 @@
     page: 1,
     transactionFilter: null,
     rhythmYear: null,
+    customYear: new Date().getFullYear(),
+    customMonth: new Date().getMonth(),
+    accountsDocument: null,
+    savedAccounts: null,
+    accountsDirty: false,
+    editingAccount: null,
   };
 
   const PAGE_SIZE = 10;
@@ -167,6 +173,10 @@
     const year = now.getFullYear();
 
     switch (period) {
+      case "customMonth":
+        return { start: new Date(state.customYear, state.customMonth, 1), end: new Date(state.customYear, state.customMonth + 1, 1) };
+      case "customYear":
+        return { start: new Date(state.customYear, 0, 1), end: new Date(state.customYear + 1, 0, 1) };
       case "lastMonth":
         return { start: addMonths(monthStart, -1), end: monthStart };
       case "twoMonthsAgo":
@@ -260,7 +270,7 @@
   }
 
   function renderOverview(summary) {
-    const monthly = ["thisMonth", "lastMonth", "twoMonthsAgo"].includes(state.period);
+    const monthly = ["thisMonth", "lastMonth", "twoMonthsAgo", "customMonth"].includes(state.period);
     els.periodLabel.textContent = monthly
       ? summary.range.start.toLocaleDateString("en-US", { month: "long", year: "numeric" })
       : state.period === "allTime" ? "All time" : String(summary.range.start.getFullYear());
@@ -275,6 +285,7 @@
     els.incomeTotal.textContent = formatJPY(summary.income);
     els.netTotal.textContent = formatJPY(summary.net);
     els.transactionCount.textContent = new Intl.NumberFormat().format(summary.transactions.length);
+    updateDateNavigation();
   }
 
   function setActiveCategory(name, categories, colors) {
@@ -399,7 +410,9 @@
   }
 
   function trailingMonths() {
-    const current = startOfMonth(new Date());
+    const yearView = ["thisYear", "lastYear", "customYear"].includes(state.period);
+    const range = periodRange(state.period);
+    const current = state.period === "allTime" ? startOfMonth(new Date()) : yearView ? new Date(range.start.getFullYear(), 11, 1) : range.start;
     return Array.from({ length: 12 }, (_, index) => {
       const start = addMonths(current, index - 11);
       const end = addMonths(start, 1);
@@ -451,6 +464,8 @@
 
   function renderTrend() {
     const months = trailingMonths();
+    const yearView = ["thisYear", "lastYear", "customYear"].includes(state.period);
+    $("trend-caption").textContent = yearView ? String(months[0].start.getFullYear()) + " · January–December" : "12 months to " + months[11].start.toLocaleDateString("en-US", {month:"short",year:"numeric"});
     const width = 720;
     const height = 300;
     const padding = { top: 30, right: 14, bottom: 46, left: 14 };
@@ -466,6 +481,7 @@
     const title = createSvgElement("title", { id: "trend-chart-title" });
     title.textContent = "Income and expense trend";
     els.trendDescription = createSvgElement("desc", { id: "trend-chart-description" });
+    hideTrendTooltip();
     els.trendChart.replaceChildren(title, els.trendDescription);
 
     [0, 0.5, 1].forEach((portion) => {
@@ -686,6 +702,13 @@
       type.className = "account-type";
       type.textContent = account.type;
       term.append(name, type);
+      if (state.accountsDocument) {
+        const edit = document.createElement("button");
+        edit.className = "account-edit"; edit.type = "button";
+        edit.textContent = "Edit"; edit.setAttribute("aria-label", "Edit " + account.name);
+        edit.addEventListener("click", () => openAccountEditor(LedgerFiles.rowsOf(state.accountsDocument).findIndex(row => row.name.trim() === account.name)));
+        term.appendChild(edit);
+      }
 
       const value = document.createElement("dd");
       const balance = document.createElement("span");
@@ -719,6 +742,9 @@
     const assets = balances.filter((account) => !isCreditAccount(account));
     const cards = balances.filter(isCreditAccount);
     els.accountGroups.replaceChildren(renderAccountGroup("Assets", assets), renderAccountGroup("Credit cards", cards));
+    $("export-accounts").hidden = !state.accountsDirty;
+    $("add-account").disabled = !state.accountsDocument;
+    $("account-status").textContent = state.accountsDirty ? "Draft changes · Save your account file to iCloud, then reopen it here to verify." : state.accountsDocument ? "" : "Open accounts.json to add or edit accounts.";
 
     els.accountsCaption.textContent = "Current balances · All loaded history";
     const subtotal = assetSummary(balances);
@@ -745,7 +771,7 @@
 
   function transactionSelection(summary) {
     const filter = state.transactionFilter;
-    if (!filter) return { transactions: summary.transactions, label: PERIOD_LABELS[state.period] };
+    if (!filter) return { transactions: summary.transactions, label: selectedPeriodLabel() };
     const transactions = state.transactions.filter((transaction) => isType(transaction, "expense") && categoryName(transaction) === filter.category && transaction.dateObject.getFullYear() === filter.year && transaction.dateObject.getMonth() === filter.month);
     const month = new Date(filter.year, filter.month, 1).toLocaleDateString("en-US", { month: "long", year: "numeric" });
     return { transactions, label: filter.category + " · " + month };
@@ -925,17 +951,7 @@
       clearTransactionSelection();
       els.recentTitle.focus({ preventScroll: true });
     });
-    const years = [...new Set(state.transactions.map((transaction) => transaction.dateObject.getFullYear()))].sort((a, b) => b - a);
-    const currentYear = new Date().getFullYear();
-    if (!years.length) years.push(currentYear);
-    state.rhythmYear = years.includes(currentYear) ? currentYear : years[0];
-    years.forEach((year) => {
-      const option = document.createElement("option");
-      option.value = year;
-      option.textContent = year;
-      els.rhythmYear.appendChild(option);
-    });
-    els.rhythmYear.value = state.rhythmYear;
+    updateRhythmYears();
     els.rhythmYear.addEventListener("change", () => {
       state.rhythmYear = Number(els.rhythmYear.value);
       clearTransactionSelection();
@@ -951,6 +967,7 @@
     renderOverview(summary);
     renderCategories(summary);
     renderRecent(summary);
+    renderTrend();
   }
 
   function setNotice(message) {
@@ -959,21 +976,212 @@
   }
 
   function bindPeriodControls() {
-    document.querySelectorAll(".period-button").forEach((button) => {
-      button.addEventListener("click", () => {
-        state.period = button.dataset.period;
-        state.page = 1;
-        state.transactionFilter = null;
-        document.querySelectorAll(".period-button").forEach((candidate) => {
-          const active = candidate === button;
-          candidate.classList.toggle("is-active", active);
-          candidate.setAttribute("aria-pressed", String(active));
-        });
-        renderPeriod();
-        renderRhythms();
-        button.scrollIntoView({ block: "nearest", inline: "nearest" });
-      });
+    document.querySelectorAll('.period-button').forEach(button => button.addEventListener('click', () => {
+      selectPeriod(button.dataset.period);
+      button.scrollIntoView({block:'nearest', inline:'nearest'});
+    }));
+    $('choose-date').addEventListener('click', () => {
+      const range = periodRange(state.period);
+      const date = state.period === 'allTime' ? new Date() : range.start;
+      const yearMode = ['thisYear','lastYear','customYear'].includes(state.period);
+      $('date-view-year').checked = yearMode; $('date-view-month').checked = !yearMode;
+      $('date-year').value = date.getFullYear(); $('date-month').value = date.getMonth();
+      $('date-month-label').hidden = $('date-view-year').checked;
+      $('date-dialog').showModal();
     });
+    $('date-mode').addEventListener('change', () => $('date-month-label').hidden = $('date-view-year').checked);
+    const adjustYear = direction => {
+      const year = Number($('date-year').value);
+      $('date-year').value = Math.min(9998, Math.max(1900, (Number.isFinite(year) ? year : new Date().getFullYear()) + direction));
+    };
+    $('picker-year-back').addEventListener('click', () => adjustYear(-1));
+    $('picker-year-forward').addEventListener('click', () => adjustYear(1));
+    $('date-form').addEventListener('submit', event => {
+      event.preventDefault();
+      const year=Number($('date-year').value), month=Number($('date-month').value);
+      if (!Number.isInteger(year) || year<1900 || year>9998) return;
+      state.customYear=year; state.customMonth=month;
+      selectPeriod($('date-view-year').checked ? 'customYear' : 'customMonth');
+      $('date-dialog').close(); $('choose-date').focus();
+    });
+    $('period-back').addEventListener('click', () => movePeriod(-1));
+    $('period-forward').addEventListener('click', () => movePeriod(1));
+  }
+
+  function selectedPeriodLabel() {
+    if (state.period === 'customMonth') return new Date(state.customYear,state.customMonth,1).toLocaleDateString('en-US',{month:'long',year:'numeric'});
+    if (state.period === 'customYear') return String(state.customYear);
+    return PERIOD_LABELS[state.period];
+  }
+
+  function updateDateNavigation() {
+    const yearView = ['thisYear','lastYear','customYear'].includes(state.period);
+    const range = periodRange(state.period);
+    const all = state.period === 'allTime';
+    $('period-back').disabled = all || range.start.getFullYear() <= 1900 && (yearView || range.start.getMonth() === 0);
+    $('period-forward').disabled = all || range.start.getFullYear() >= 9998 && (yearView || range.start.getMonth() === 11);
+    $('period-back').setAttribute('aria-label',yearView?'Previous year':'Previous month');
+    $('period-forward').setAttribute('aria-label',yearView?'Next year':'Next month');
+    document.querySelectorAll('.period-button').forEach(button => {
+      const active = button.dataset.period === state.period;
+      button.classList.toggle('is-active',active);button.setAttribute('aria-pressed',String(active));
+    });
+  }
+
+  function selectPeriod(period) {
+    state.period=period;state.page=1;state.transactionFilter=null;
+    renderPeriod(); renderRhythms();
+  }
+
+  function movePeriod(direction) {
+    if (state.period === 'allTime') return;
+    const range=periodRange(state.period);
+    const yearView=['thisYear','lastYear','customYear'].includes(state.period);
+    const date=yearView?new Date(range.start.getFullYear()+direction,0,1):addMonths(range.start,direction);
+    if (date.getFullYear()<1900 || date.getFullYear()>9998) return;
+    state.customYear=date.getFullYear();state.customMonth=date.getMonth();
+    selectPeriod(yearView?'customYear':'customMonth');
+  }
+
+  function updateRhythmYears() {
+    const years=[...new Set(state.transactions.map(t=>t.dateObject.getFullYear()))].sort((a,b)=>b-a);
+    const current=new Date().getFullYear();
+    if (!years.length) years.push(current);
+    if (!years.includes(state.rhythmYear)) state.rhythmYear=years.includes(current)?current:years[0];
+    els.rhythmYear.replaceChildren();
+    years.forEach(year=>{const option=document.createElement('option');option.value=year;option.textContent=year;els.rhythmYear.append(option);});
+    els.rhythmYear.value=state.rhythmYear;
+  }
+
+  function openAccountEditor(index) {
+    if (!state.accountsDocument) return;
+    state.editingAccount=index;
+    const row=index===null?{}:LedgerFiles.rowsOf(state.accountsDocument)[index];
+    if (!row) return;
+    const existing=index!==null;
+    $('account-form').reset();$('account-error').textContent='';
+    $('account-editor-title').textContent=existing?'Edit opening details':'Add an account';
+    $('account-name').value=row.name || ''; $('account-name').readOnly=existing;
+    const type=String(row.type || (existing ? 'Account' : 'Bank')).trim();
+    $('account-type').querySelectorAll('[data-legacy]').forEach(option=>option.remove());
+    if (![...$('account-type').options].some(option=>option.value===type)) {
+      const option=document.createElement('option');option.value=type;option.textContent=type;option.dataset.legacy='true';$('account-type').append(option);
+    }
+    $('account-type').value=existing?String(row.type || 'Account').trim():type;
+    $('account-type').disabled=existing;
+    $('account-currency').value=String(row.currency || 'JPY').trim().toUpperCase();$('account-currency').readOnly=existing;
+    $('account-opening').value=hasNumber(row.openingBalance)?row.openingBalance:existing?'':'0';
+    const now=new Date(); const today=[now.getFullYear(),String(now.getMonth()+1).padStart(2,'0'),String(now.getDate()).padStart(2,'0')].join('-');
+    $('account-date').value=row.openingDate?String(row.openingDate).slice(0,10):existing?'':today;
+    $('account-opening').required=!existing;$('account-date').required=!existing;
+    const card=isCreditAccount({type:$('account-type').value});
+    $('account-include').checked=!card && row.includeInAssets!==false;$('account-include').disabled=card;
+    $('account-identity-note').hidden=!existing;
+    $('account-dialog').showModal();
+  }
+
+  let importWorker=null;
+  let cancelImport=null;
+  let verifyingAccounts=false;
+
+  function openFileDialog(verify=false) {
+    verifyingAccounts=verify;
+    $('files-form').reset();$('import-status').textContent='';
+    $('ledger-files').disabled=verify;
+    $('accounts-file').required=verify;
+    $('files-dialog').showModal();
+  }
+
+  function finishImport(result) {
+    if (verifyingAccounts && (!result.accounts || LedgerFiles.canonical(result.accounts)!==LedgerFiles.canonical(state.accountsDocument))) {
+      throw Error('This file does not match your draft. Save the updated accounts.json to iCloud, then choose that file. Your draft is unchanged.');
+    }
+    if (result.accounts && state.accountsDirty && !verifyingAccounts && LedgerFiles.canonical(result.accounts)!==LedgerFiles.canonical(state.accountsDocument) && !window.confirm('This accounts file differs from your unsaved draft. Replace the draft with this file?')) return;
+    if (result.transactions!==null) {state.transactions=result.transactions;state.skippedLines=result.skipped;}
+    if (result.accounts) {
+      state.accountsDocument=result.accounts;state.savedAccounts=LedgerFiles.canonical(result.accounts);state.accountsDirty=false;
+      state.accounts=parseAccounts(JSON.stringify(result.accounts));
+    }
+    state.page=1;state.transactionFilter=null;
+    updateRhythmYears(); renderPeriod();renderRhythms();renderAccounts();
+    const skipped=state.skippedLines?' '+state.skippedLines.toLocaleString()+' unreadable lines were skipped; totals may be incomplete.':'';
+    setNotice((verifyingAccounts?'Reopened account file matches your changes. ':'Loaded locally. ')+state.transactions.length.toLocaleString()+' transactions available.'+skipped);
+    $('files-dialog').close();
+  }
+
+  async function importSelectedFiles(event) {
+    event.preventDefault();
+    const ledgerFiles=[...$('ledger-files').files];const accountsFile=$('accounts-file').files[0] || null;
+    if (!ledgerFiles.length && !accountsFile) {$('import-status').textContent='Choose a ledger file, an accounts file, or both.';return;}
+    if (importWorker) return;
+    $('import-submit').disabled=true;$('import-status').textContent='Reading files…';
+    try {
+      const result=await new Promise((resolve,reject)=>{
+        const worker=new Worker('file-worker.js');importWorker=worker;
+        cancelImport=()=>{worker.terminate();importWorker=null;cancelImport=null;reject(Error('Import cancelled. Your current view is unchanged.'));};
+        worker.onmessage=({data})=>{
+          if (data.kind==='progress') {$('import-status').textContent='Reading ledger · '+data.percent+'%';return;}
+          worker.terminate();importWorker=null;cancelImport=null;
+          if (data.kind==='ready') resolve(data);else reject(Error(data.message));
+        };
+        worker.onerror=()=>{worker.terminate();importWorker=null;cancelImport=null;reject(Error('The file reader could not start. Reopen the dashboard online and try again.'));};
+        worker.postMessage({ledgerFiles,accountsFile});
+      });
+      finishImport(result);
+    } catch(error) {$('import-status').textContent=error.message;}
+    finally {$('import-submit').disabled=false;}
+  }
+
+  function accountFile() {
+    return new File([JSON.stringify(state.accountsDocument,null,2)+'\n'],'accounts.json',{type:'application/json'});
+  }
+
+  function openSaveDialog() {
+    if (!state.accountsDirty) return;
+    $('save-status').textContent='';
+    $('save-summary').textContent=LedgerFiles.rowsOf(state.accountsDocument).length+' accounts · Updated opening details included';
+    const file=accountFile();
+    $('share-accounts').hidden=!(navigator.canShare && navigator.canShare({files:[file]}));
+    $('save-dialog').showModal();
+  }
+
+  function bindFileAndAccountControls() {
+    document.querySelectorAll('[data-close]').forEach(button=>button.addEventListener('click',()=>$(button.dataset.close).close()));
+    $('open-files').addEventListener('click',()=>openFileDialog());
+    $('files-form').addEventListener('submit',importSelectedFiles);
+    $('files-dialog').addEventListener('close',()=>{
+      if(cancelImport) cancelImport();
+      $('import-submit').disabled=false;
+    });
+    $('add-account').addEventListener('click',()=>openAccountEditor(null));
+    $('account-type').addEventListener('change',()=>{
+      const card=isCreditAccount({type:$('account-type').value});
+      $('account-include').disabled=card;$('account-include').checked=!card;
+    });
+    $('account-form').addEventListener('submit',event=>{
+      event.preventDefault();
+      try {
+        const next=LedgerFiles.editAccount(state.accountsDocument,state.editingAccount,{
+          name:$('account-name').value,type:$('account-type').value,currency:$('account-currency').value,
+          openingBalance:$('account-opening').value,openingDate:$('account-date').value,includeInAssets:$('account-include').checked
+        });
+        state.accountsDocument=next;state.accountsDirty=LedgerFiles.canonical(next)!==state.savedAccounts;
+        state.accounts=parseAccounts(JSON.stringify(next));renderAccounts();$('account-dialog').close();
+        if(state.accountsDirty) $('export-accounts').focus();
+      }catch(error){$('account-error').textContent=error.message;}
+    });
+    $('export-accounts').addEventListener('click',openSaveDialog);
+    $('share-accounts').addEventListener('click',async()=>{
+      try {await navigator.share({files:[accountFile()]});$('save-status').textContent='File shared. Reopen the saved account file to verify it; sharing alone does not confirm an iCloud save.';}
+      catch(error){$('save-status').textContent=error.name==='AbortError'?'Sharing cancelled. Your draft is still here.':'Sharing is unavailable. Use Download file instead.';}
+    });
+    $('download-accounts').addEventListener('click',()=>{
+      const url=URL.createObjectURL(accountFile());const link=document.createElement('a');link.href=url;link.download='accounts.json';
+      document.body.append(link);link.click();link.remove();setTimeout(()=>URL.revokeObjectURL(url),60000);
+      $('save-status').textContent='Download prepared. Move the file to your iCloud Personal Ledger folder, then reopen it here. Your draft remains until verified.';
+    });
+    $('verify-accounts').addEventListener('click',()=>{$('save-dialog').close();openFileDialog(true);});
+    window.addEventListener('beforeunload',event=>{if(state.accountsDirty){event.preventDefault();event.returnValue='';}});
   }
 
   function cacheElements() {
@@ -1032,20 +1240,23 @@
     state.transactions = parsedLedger.transactions;
     state.skippedLines = parsedLedger.skipped;
     state.accounts = parseAccounts(payload.accountsText);
+    if (payload.accountsText) {
+      try { state.accountsDocument = LedgerFiles.accountsDocument(payload.accountsText); state.savedAccounts = LedgerFiles.canonical(state.accountsDocument); } catch (_) { /* Existing read-only balances remain available; editing requires a valid complete account file. */ }
+    }
 
     if (!rawFragment) {
-      setNotice("Open this page from your iPhone Shortcut to load the latest ledger.");
+      setNotice("Open your ledger files from iCloud Drive, or use your existing iPhone Shortcut.");
     } else if (!payload.ledgerText && !payload.accountsText) {
       setNotice("The private data fragment could not be read. Rebuild the Shortcut using the included guide.");
     } else if (state.skippedLines > 0) {
       setNotice(`Loaded locally. ${state.skippedLines} malformed ledger ${state.skippedLines === 1 ? "line was" : "lines were"} skipped.`);
     }
 
+    bindFileAndAccountControls();
     bindPeriodControls();
     bindHistoryControls();
     renderPeriod();
     renderRhythms();
-    renderTrend();
     renderAccounts();
 
     const themeQuery = window.matchMedia("(prefers-color-scheme: dark)");

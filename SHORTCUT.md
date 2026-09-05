@@ -1,3 +1,5 @@
+> Legacy URL launcher: still supported for smaller ledgers. For loading without URL-size constraints and saving account edits, use the dashboard's Open files control and see [the file workflow](docs/FILES.md).
+
 # iPhone Shortcut: Open Personal Ledger
 
 This Shortcut reads the two private files from iCloud, Base64-encodes them on the phone, and puts them after `#` in the dashboard URL.

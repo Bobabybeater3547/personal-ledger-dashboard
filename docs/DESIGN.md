@@ -31,3 +31,11 @@ Keep transport and account calculations independent of presentation. Future acco
 
 ## Verification
 Use fictional input only. Verify 10-row pages, last-page bounds and previous/jump actions; category-month selection and reset; year changes; empty and malformed payloads; subtotal exclusion of credit cards; opening-date and FX behavior; mobile overflow and long values; reduced-motion and dark tokens; cache version updates. Test the installed iPhone Shortcut after deployment for device-specific behavior.
+
+## v3.1 — Apple-style interactions
+
+Keep editorial typography and the unboxed page composition. Controls use the platform system font (SF on Apple devices), 44px minimum hit areas, rounded primary actions, quiet circular chevrons and visible pressed/focus states. Month / Year is a native-radio segmented control; month and opening-date controls delegate to the platform picker. Year is directly editable with a compact stepper. On small screens, rounded bottom sheets keep focused tasks separate from the page; on desktop, the same dialogs are centered. The background is solid paper, with no glass blur. Sheet headers remain reachable during scrolling. Respect safe areas and reduced motion; do not invent drag handles or gestures that do not work.
+
+Date navigation applies to spending, entries and the trend (calendar year or trailing months ending at the chosen month). Category Rhythms retains its independent year picker; accounts explicitly remain current balances from all loaded history. These scopes must stay visible.
+
+File import runs in a separate worker and commits only after validation. Account edits are drafts, exported to an actual accounts.json with all unknown metadata retained. Only reopening matching saved contents acknowledges the save. Browser memory remains session-only. See FILES.md for the active protocol; earlier v2 revision/IndexedDB guides are historical.

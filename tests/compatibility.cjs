@@ -7,7 +7,7 @@ const source = fs.readFileSync(require('node:path').join(__dirname, '../app.js')
 function ledger() {
   const context = { window: {}, TextDecoder, URLSearchParams, atob };
   vm.createContext(context);
-  vm.runInContext(source.replace('  init();', '  globalThis.api = { state, readFragment, parseLedger, parseAccounts, transactionPage, transactionSelection, rhythmData, accountBalances, assetSummary };'), context);
+  vm.runInContext(source.replace('  init();', '  globalThis.api = { state, readFragment, parseLedger, parseAccounts, transactionPage, transactionSelection, rhythmData, accountBalances, assetSummary, periodRange, trailingMonths };'), context);
   return context.api;
 }
 const tx = (extra = {}) => ({date:'2026-09-03T12:00:00+09:00',type:'Expense',account:'Bank',category:'Food',currency:'JPY',amount:100,...extra});
@@ -62,4 +62,16 @@ test('active dashboard has no persistent financial storage or remote requests', 
  const html=fs.readFileSync(require('node:path').join(__dirname,'../index.html'),'utf8');
  assert.doesNotMatch(html,/(?:src|href)=["']https?:/);
  assert.match(html,/history\.replaceState/);
+});
+
+test('custom month ranges include leap day and cross year boundaries',()=>{
+ const api=ledger();api.state.customYear=2024;api.state.customMonth=1;
+ const range=api.periodRange('customMonth');assert.equal(range.start.getMonth(),1);assert.equal(range.end.getDate(),1);assert.equal(range.end.getMonth(),2);
+ assert.ok(new Date('2024-02-29T12:00:00')>=range.start && new Date('2024-02-29T12:00:00')<range.end);
+ api.state.customMonth=11;assert.equal(api.periodRange('customMonth').end.getFullYear(),2025);
+});
+test('whole-year selection and trend match the selected historical year',()=>{
+ const api=ledger();api.state.period='customYear';api.state.customYear=2023;
+ const range=api.periodRange('customYear');assert.equal(range.end.getFullYear(),2024);
+ const months=api.trailingMonths();assert.equal(months[0].start.getFullYear(),2023);assert.equal(months[0].start.getMonth(),0);assert.equal(months[11].start.getMonth(),11);
 });
