@@ -4,10 +4,10 @@
 
 1. Open the clean dashboard URL in Safari or the installed web app.
 2. Tap **Open files** in the masthead.
-3. Under Transactions, select `iCloud Drive/Personal Ledger/ledger.txt`. Under Accounts, select `accounts.json` from the same folder.
+3. Under Transactions, select `iCloud Drive/Personal Ledger/ledger.json`. Under Accounts, select `accounts.txt` from the same folder.
 4. Tap **Open files**. This reads selected files on your device; it does not upload them.
 
-You can refresh just the transactions by selecting only ledger.txt. The existing account view and any draft account edits remain. Selecting only accounts.json replaces only account configuration. Multiple non-overlapping NDJSON files can be selected together; their combined history replaces the current history. Reimporting the same full file does not append duplicates. Do not select overlapping backups together.
+You can refresh just the transactions by selecting only ledger.json. The existing account view and any draft account edits remain. Selecting only accounts.txt replaces only account configuration. Multiple non-overlapping NDJSON files can be selected together; their combined history replaces the current history. Reimporting the same full file does not append duplicates. Do not select overlapping backups together.
 
 The importer reads chunks in a worker and applies results only after parsing succeeds. Invalid account files reject the whole selection. Malformed ledger lines are counted and skipped, with an incomplete-data notice; an entirely unreadable ledger is rejected. Cancelling an import keeps the previous view.
 
@@ -17,7 +17,7 @@ Your existing logging Shortcuts do not need changing. For a clean-link launcher,
 
 ## Add or edit accounts
 
-Open the complete existing accounts.json before editing; this avoids accidentally exporting an incomplete account list. If starting a new ledger, an accounts.json containing `[]` is a valid empty list.
+Open the complete existing accounts.txt before editing; this avoids accidentally exporting an incomplete account list. If starting a new ledger, an accounts.txt containing `[]` is a valid empty list.
 
 Tap **Edit** beside an account to change its opening balance/date or asset inclusion. The opening balance is before all entries on the opening date. Moving the date forward excludes earlier entries from that account's balance. Account balances always use all loaded history through today, regardless of the selected spending period.
 
@@ -28,16 +28,22 @@ Tap **Add account** for a new named account, type, currency, opening balance and
 ## Save the actual account file
 
 1. Tap **Save account changes**.
-2. Use **Share file** on supported iPhones, then **Save to Files**. Select the existing Personal Ledger folder in iCloud Drive. Save as **accounts.json**, replacing the original only after making a backup. If Share is unavailable, use **Download file**, then move that file from Downloads to the same iCloud folder in Files.
-3. Be careful about names: a browser may create accounts (1).json. Your logging Shortcuts need the authoritative file to retain the exact name **accounts.json**.
-4. Back in the dashboard, tap **Reopen saved account file** and select the iCloud accounts.json. Matching contents clear the draft state; a different file leaves the draft intact and explains the mismatch.
+2. Use **Share file** on supported iPhones, then **Save to Files**. Select the existing Personal Ledger folder in iCloud Drive. Save as **accounts.txt**, replacing the original only after making a backup. If Share is unavailable, use **Download file**, then move that file from Downloads to the same iCloud folder in Files.
+3. Be careful about names: a browser may create accounts (1).txt. Your logging Shortcuts need the authoritative file to retain the exact name **accounts.txt**.
+4. Back in the dashboard, tap **Reopen saved account file** and select the iCloud accounts.txt. Matching contents clear the draft state; a different file leaves the draft intact and explains the mismatch.
 
 Sharing or downloading alone is not proof of an iCloud write. The app checks the reopened contents. It cannot independently verify the file's folder or that iCloud has finished syncing; select the authoritative file explicitly. No callback or URL contains the edited accounts.
 
-If logging Shortcuts read accounts.json dynamically, they can use the new account after saving. If they have a hard-coded List or Choose from Menu, add the new account name to those lists yourself. The dashboard cannot edit native Shortcuts.
+If logging Shortcuts read accounts.txt dynamically, they can use the new account after saving. If they have a hard-coded List or Choose from Menu, add the new account name to those lists yourself. The dashboard cannot edit native Shortcuts.
 
 ## Platform boundary
 
 Safari supports selected-file reading and sharing/downloading. It does not provide the user-visible showSaveFilePicker API used by some desktop browsers for arbitrary file overwrites. This version therefore uses an explicit, portable save workflow rather than claiming automatic iCloud synchronization.
 
 References: [WebKit file system explanation](https://webkit.org/blog/12257/the-file-system-access-api-with-origin-private-file-system/), [File System Access specification and browser support](https://wicg.github.io/file-system-access/), [Apple Shortcuts share actions](https://support.apple.com/en-gb/guide/shortcuts/apdaf74d75a5/ios).
+
+## File names
+
+Your existing names are **ledger.json** for transactions and **accounts.txt** for accounts. Do not rename either file. Both .txt and .json can contain JSON data; the content determines how it is read. The file picker accepts both extensions. The transaction reader supports newline-delimited JSON and a JSON array; arrays are parsed as a complete document in the worker and require additional memory. The account file must contain the same JSON list or accounts envelope used by the existing dashboard.
+
+Exports keep the name of the account file you opened. For the legacy Shortcut path, where no filename is passed, the default is accounts.txt. Always verify that the name shown in Save account changes matches the file your Shortcut reads.

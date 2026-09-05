@@ -16,6 +16,7 @@
     customYear: new Date().getFullYear(),
     customMonth: new Date().getMonth(),
     accountsDocument: null,
+    accountsFilename: "accounts.txt",
     savedAccounts: null,
     accountsDirty: false,
     editingAccount: null,
@@ -744,7 +745,7 @@
     els.accountGroups.replaceChildren(renderAccountGroup("Assets", assets), renderAccountGroup("Credit cards", cards));
     $("export-accounts").hidden = !state.accountsDirty;
     $("add-account").disabled = !state.accountsDocument;
-    $("account-status").textContent = state.accountsDirty ? "Draft changes · Save your account file to iCloud, then reopen it here to verify." : state.accountsDocument ? "" : "Open accounts.json to add or edit accounts.";
+    $("account-status").textContent = state.accountsDirty ? "Draft changes · Save your account file to iCloud, then reopen it here to verify." : state.accountsDocument ? "" : "Open your accounts file to add or edit accounts.";
 
     els.accountsCaption.textContent = "Current balances · All loaded history";
     const subtotal = assetSummary(balances);
@@ -1094,11 +1095,12 @@
 
   function finishImport(result) {
     if (verifyingAccounts && (!result.accounts || LedgerFiles.canonical(result.accounts)!==LedgerFiles.canonical(state.accountsDocument))) {
-      throw Error('This file does not match your draft. Save the updated accounts.json to iCloud, then choose that file. Your draft is unchanged.');
+      throw Error('This file does not match your draft. Save the updated account file to iCloud, then choose that file. Your draft is unchanged.');
     }
     if (result.accounts && state.accountsDirty && !verifyingAccounts && LedgerFiles.canonical(result.accounts)!==LedgerFiles.canonical(state.accountsDocument) && !window.confirm('This accounts file differs from your unsaved draft. Replace the draft with this file?')) return;
     if (result.transactions!==null) {state.transactions=result.transactions;state.skippedLines=result.skipped;}
     if (result.accounts) {
+      state.accountsFilename=result.accountsFilename || state.accountsFilename;
       state.accountsDocument=result.accounts;state.savedAccounts=LedgerFiles.canonical(result.accounts);state.accountsDirty=false;
       state.accounts=parseAccounts(JSON.stringify(result.accounts));
     }
@@ -1133,12 +1135,13 @@
   }
 
   function accountFile() {
-    return new File([JSON.stringify(state.accountsDocument,null,2)+'\n'],'accounts.json',{type:'application/json'});
+    return new File([JSON.stringify(state.accountsDocument,null,2)+'\n'],state.accountsFilename,{type:/\.txt$/i.test(state.accountsFilename)?'text/plain':'application/json'});
   }
 
   function openSaveDialog() {
     if (!state.accountsDirty) return;
     $('save-status').textContent='';
+    $('account-save-name').textContent=state.accountsFilename;
     $('save-summary').textContent=LedgerFiles.rowsOf(state.accountsDocument).length+' accounts · Updated opening details included';
     const file=accountFile();
     $('share-accounts').hidden=!(navigator.canShare && navigator.canShare({files:[file]}));
@@ -1176,7 +1179,7 @@
       catch(error){$('save-status').textContent=error.name==='AbortError'?'Sharing cancelled. Your draft is still here.':'Sharing is unavailable. Use Download file instead.';}
     });
     $('download-accounts').addEventListener('click',()=>{
-      const url=URL.createObjectURL(accountFile());const link=document.createElement('a');link.href=url;link.download='accounts.json';
+      const url=URL.createObjectURL(accountFile());const link=document.createElement('a');link.href=url;link.download=state.accountsFilename;
       document.body.append(link);link.click();link.remove();setTimeout(()=>URL.revokeObjectURL(url),60000);
       $('save-status').textContent='Download prepared. Move the file to your iCloud Personal Ledger folder, then reopen it here. Your draft remains until verified.';
     });

@@ -245,8 +245,8 @@
     <form id="files-form">
       <header class="dialog-heading"><div><p class="eyebrow">Your files, privately</p><h2 id="files-title">Open your ledger</h2></div><button type="button" class="icon-button" data-close="files-dialog" aria-label="Close file import">×</button></header>
       <p class="form-note">Choose files from iCloud Drive or this device. They are read here, never uploaded. Larger ledgers no longer need to fit in a URL.</p>
-      <label class="file-field">Transactions<input id="ledger-files" type="file" accept=".txt,.ndjson,.jsonl,text/plain" multiple><span>ledger.txt, or non-overlapping parts of your ledger. Replaces the currently loaded history.</span></label>
-      <label class="file-field">Accounts<input id="accounts-file" type="file" accept=".json,application/json"><span>Your existing accounts.json. Leave either field empty to keep that part of your current view.</span></label>
+      <label class="file-field">Transactions<input id="ledger-files" type="file" accept=".json,.txt,.ndjson,.jsonl,application/json,text/plain" multiple><span>ledger.json, or non-overlapping parts of your ledger. Replaces the currently loaded history.</span></label>
+      <label class="file-field">Accounts<input id="accounts-file" type="file" accept=".txt,.json,text/plain,application/json"><span>Your existing accounts.txt. Leave either field empty to keep that part of your current view.</span></label>
       <p class="form-note">For the complete view, select both files. Files stay in this session; reopen them after closing or reloading the page.</p>
       <p id="import-status" class="form-status" role="status" aria-live="polite"></p>
       <footer class="dialog-actions"><button class="text-button" type="button" data-close="files-dialog">Cancel</button><button id="import-submit" class="solid-button" type="submit">Open files</button></footer>
@@ -275,10 +275,10 @@
 
   <dialog class="editor-dialog" id="save-dialog" aria-labelledby="save-title">
     <header class="dialog-heading"><div><p class="eyebrow">Keep your changes</p><h2 id="save-title">Back to iCloud</h2></div><button class="icon-button" type="button" data-close="save-dialog" aria-label="Close save instructions">×</button></header>
-    <p class="form-note">Save the updated <strong>accounts.json</strong> to your Personal Ledger folder in iCloud Drive, replacing the old account file. Keep a copy of the original before replacing it.</p>
+    <p class="form-note">Save the updated <strong id="account-save-name">accounts.txt</strong> to your Personal Ledger folder in iCloud Drive, replacing the old account file. Keep a copy of the original before replacing it.</p>
     <p class="form-note">On iPhone, use Share file → Save to Files. If sharing is unavailable, download the file and move it from Downloads in Files. Safari cannot replace your iCloud file automatically.</p>
     <div class="save-summary" id="save-summary"></div>
-    <p class="form-note">Then reopen the saved account file here to verify it. Your ledger.txt is unchanged.</p>
+    <p class="form-note">Then reopen the saved account file here to verify it. Your ledger.json is unchanged.</p>
     <p class="form-status" id="save-status" role="status" aria-live="polite"></p>
     <footer class="dialog-actions"><button id="download-accounts" class="text-button" type="button">Download file</button><button id="share-accounts" class="solid-button" type="button">Share file</button></footer>
     <button id="verify-accounts" class="text-button verify-button" type="button">Reopen saved account file →</button>

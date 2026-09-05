@@ -15,11 +15,11 @@ https://YOUR-USERNAME.github.io/personal-ledger-dashboard/
 Create a new Shortcut named **Open Personal Ledger**, then add these actions in this exact order.
 
 1. **File**
-   - Tap the file field and choose `iCloud Drive/Personal Ledger/ledger.txt`.
+   - Tap the file field and choose `iCloud Drive/Personal Ledger/ledger.json`.
    - Turn off **Show Document Picker** if that option appears.
 
 2. **Base64 Encode**
-   - Input: the `ledger.txt` file from step 1.
+   - Input: the `ledger.json` file from step 1.
    - Mode: **Encode**.
    - **Line Breaks: None**.
 
@@ -28,11 +28,11 @@ Create a new Shortcut named **Open Personal Ledger**, then add these actions in 
    - Value: the Base64 result from step 2.
 
 4. **File**
-   - Choose `iCloud Drive/Personal Ledger/accounts.json`.
+   - Choose `iCloud Drive/Personal Ledger/accounts.txt`.
    - Turn off **Show Document Picker** if shown.
 
 5. **Base64 Encode**
-   - Input: the `accounts.json` file from step 4.
+   - Input: the `accounts.txt` file from step 4.
    - Mode: **Encode**.
    - **Line Breaks: None**.
 
@@ -63,7 +63,7 @@ Run the Shortcut. Safari should briefly receive the fragment, then the address b
 
 - Open the Shortcut’s details, choose **Add to Home Screen**, and use the name `Ledger`.
 - The Home Screen icon launches the Shortcut, which is important: launching the installed web app by itself has no private fragment and therefore no ledger data.
-- Keep `ledger.txt` as newline-delimited JSON: one complete JSON transaction per line and no surrounding array.
+- Keep `ledger.json` as newline-delimited JSON: one complete JSON transaction per line and no surrounding array.
 
 ## If Base64 Encode is hard to find
 
@@ -73,5 +73,5 @@ Search actions for **Base64**. Depending on iOS language and version, the action
 
 - **Dashboard is empty:** the Text action probably contains typed variable names instead of magic variables, or the file action returned no content.
 - **“Private data fragment could not be read”:** confirm both Base64 actions use no line breaks and the final Text is one line.
-- **Some transactions are missing:** open `ledger.txt` and confirm every non-empty line is valid JSON with an ISO-style `date`.
+- **Some transactions are missing:** open `ledger.json` and confirm every non-empty line is valid JSON with an ISO-style `date`.
 - **CNY shows no JPY equivalent:** at least one CNY transaction needs a positive numeric `fxRate`.

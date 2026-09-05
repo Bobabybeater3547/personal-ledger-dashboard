@@ -5,9 +5,9 @@ const fs = require('node:fs');
 const vm = require('node:vm');
 const source = fs.readFileSync(require('node:path').join(__dirname, '../app.js'), 'utf8');
 function ledger() {
-  const context = { window: {}, TextDecoder, URLSearchParams, atob };
+  const context = { window: {}, TextDecoder, URLSearchParams, atob, File };
   vm.createContext(context);
-  vm.runInContext(source.replace('  init();', '  globalThis.api = { state, readFragment, parseLedger, parseAccounts, transactionPage, transactionSelection, rhythmData, accountBalances, assetSummary, periodRange, trailingMonths };'), context);
+  vm.runInContext(source.replace('  init();', '  globalThis.api = { state, readFragment, parseLedger, parseAccounts, transactionPage, transactionSelection, rhythmData, accountBalances, assetSummary, periodRange, trailingMonths, accountFile };'), context);
   return context.api;
 }
 const tx = (extra = {}) => ({date:'2026-09-03T12:00:00+09:00',type:'Expense',account:'Bank',category:'Food',currency:'JPY',amount:100,...extra});
@@ -74,4 +74,11 @@ test('whole-year selection and trend match the selected historical year',()=>{
  const api=ledger();api.state.period='customYear';api.state.customYear=2023;
  const range=api.periodRange('customYear');assert.equal(range.end.getFullYear(),2024);
  const months=api.trailingMonths();assert.equal(months[0].start.getFullYear(),2023);assert.equal(months[0].start.getMonth(),0);assert.equal(months[11].start.getMonth(),11);
+});
+
+test('account exports retain the original txt or json filename',async()=>{
+ const api=ledger();api.state.accountsDocument={accounts:[]};
+ for(const name of ['accounts.txt','accounts.json']) {
+  api.state.accountsFilename=name;const file=api.accountFile();assert.equal(file.name,name);assert.deepEqual(JSON.parse(await file.text()),{accounts:[]});
+ }
 });

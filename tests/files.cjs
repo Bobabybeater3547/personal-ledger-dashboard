@@ -36,3 +36,15 @@ test('invalid account file rejects entire selection; accounts-only import leaves
  const bad=await worker({ledgerFiles:[new File(['{"date":"2026-09-03"}'],'ledger.txt')],accountsFile:new File(['{}'],'accounts.json')});assert.equal(bad.kind,'error');
  const only=await worker({ledgerFiles:[],accountsFile:new File(['[]'],'accounts.json')});assert.equal(only.transactions,null);assert.equal(only.accounts.length,0);
 });
+test('ledger.json arrays and accounts.txt are accepted without renaming',async()=>{
+ const rows=[{date:'2026-09-03',amount:10},{date:'2026-09-04',amount:20}];
+ const result=await worker({ledgerFiles:[new File([JSON.stringify(rows,null,2)],'ledger.json')],accountsFile:new File([JSON.stringify(original)],'accounts.txt')});
+ assert.equal(result.kind,'ready');assert.equal(result.transactions.length,2);assert.equal(result.transactions[0].amount,20);assert.equal(result.accountsFilename,'accounts.txt');
+});
+test('ledger.json also accepts newline-delimited JSON, independent of extension',async()=>{
+ const result=await worker({ledgerFiles:[new File(['{"date":"2026-09-03","amount":10}\n{"date":"2026-09-04","amount":20}'],'ledger.json')]});assert.equal(result.kind,'ready');assert.equal(result.transactions.length,2);
+});
+test('malformed JSON arrays reject the import, while empty arrays are valid',async()=>{
+ const bad=await worker({ledgerFiles:[new File(['[{"date":"2026-09-03"},'],'ledger.json')]});assert.equal(bad.kind,'error');
+ const empty=await worker({ledgerFiles:[new File(['[]'],'ledger.json')]});assert.equal(empty.kind,'ready');assert.equal(empty.transactions.length,0);
+});

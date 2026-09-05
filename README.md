@@ -5,9 +5,9 @@ The Nordic editorial dashboard, with Apple-style controls and three practical ad
 ## Everyday use
 
 - **Choose date** opens a Month / Year segmented control. Pick a month, enter any year from 1900 to 9998, or use the year stepper. The arrows beside the date move one month or one year. The original shortcuts to recent periods remain.
-- **Open files** reads ledger.txt and accounts.json directly from iCloud Drive / Files. Files are processed locally, in a worker, without encoding the ledger in a URL. Select either file to replace only that part of the view. Multiple ledger parts must not overlap; they replace the loaded history together.
+- **Open files** reads ledger.json and accounts.txt directly from iCloud Drive / Files. Files are processed locally, in a worker, without encoding the ledger in a URL. Select either file to replace only that part of the view. Multiple ledger parts must not overlap; they replace the loaded history together.
 - **Edit** beside an account changes its opening date, opening balance and asset inclusion. **Add account** adds an account to the loaded account file. Apply recalculates the local view; it is a draft until you save and reopen the file.
-- **Save account changes** shares or downloads the updated accounts.json. Save it in your existing iCloud Personal Ledger folder, replacing the previous account file after making a backup. Reopen the saved file to verify that it matches. The dashboard cannot silently overwrite iCloud Drive.
+- **Save account changes** shares or downloads the updated accounts.txt. Save it in your existing iCloud Personal Ledger folder, replacing the previous account file after making a backup. Reopen the saved file to verify that it matches. The dashboard cannot silently overwrite iCloud Drive.
 
 Read [the file workflow](docs/FILES.md) before your first account save. Your existing Shortcut and URL fragment still work. No transaction migration is required.
 
@@ -21,7 +21,7 @@ The direct-file workflow removes the URL transport limit, not device memory limi
 
 Previous / Next / page jump, category-month drill-down and year selection remain. Credit cards are excluded from the provisional asset subtotal. Opening dates, native transfer amounts, both legacy payment directions, missing valuations and stable same-date ordering are preserved.
 
-Existing account names, types and currencies stay fixed when editing to avoid breaking history. Unknown account fields and the original array/object envelope survive exports. The dashboard never rewrites ledger.txt. If your logging Shortcuts have a hard-coded account menu, update those choices after adding an account; browser edits cannot modify a Shortcut.
+Existing account names, types and currencies stay fixed when editing to avoid breaking history. Unknown account fields and the original array/object envelope survive exports. The dashboard never rewrites ledger.json. If your logging Shortcuts have a hard-coded account menu, update those choices after adding an account; browser edits cannot modify a Shortcut.
 
 ## Development and deployment
 
